@@ -10,13 +10,13 @@ This repository will hold the plugin-owned implementation for the Tribe-X AI exp
 
 - Define the plugin boundary between MCPViews core and the closed AI feature set
 - Stand up the plugin repository and planning artifacts
-- Extend Persona Lab into a save-first evaluation workspace for single-run and parallel persona testing
+- Extend Persona Studio into a save-first evaluation workspace for single-run and parallel persona testing
 
 ## Initial Scope
 
 - Plugin-owned AI shell, thread renderer, and runtime UI
 - Plugin-owned auth and hosted backend integration
-- Plugin-owned Persona Lab evaluation workflows, including persisted parallel test batches
+- Plugin-owned Persona Studio evaluation workflows, including persisted parallel test batches
 - Plugin-owned planning and architecture records
 - Coordination artifacts linked back to DecidR and Ludflow
 

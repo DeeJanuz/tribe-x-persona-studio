@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var SESSION_LABEL = 'Persona Lab';
+  var SESSION_LABEL = 'Persona Studio';
   var TERMINAL_RUN_STATUSES = {
     SUCCEEDED: true,
     FAILED: true,
@@ -97,117 +97,129 @@
 
   function ensureStyles() {
     var globalState = getGlobalState();
-    if (globalState.stylesInjected) {
+    if (globalState.stylesInjected || document.getElementById('parallel-run-workshop-theme')) {
       return;
     }
     globalState.stylesInjected = true;
 
     var style = document.createElement('style');
+    style.id = 'parallel-run-workshop-theme';
     style.textContent = [
-      '.persona-lab-root{--pl-bg:#f6f8fb;--pl-surface:#ffffff;--pl-surface-muted:#f8fafc;--pl-surface-strong:#ffffff;--pl-border:#d8e1ec;--pl-border-soft:#dbe4ef;--pl-text:#0f172a;--pl-text-muted:#5b6b80;--pl-text-soft:#7b8aa0;--pl-accent:#0f766e;--pl-accent-strong:#0b5f58;--pl-accent-soft:rgba(15,118,110,.16);--pl-accent-panel:#e8fffb;--pl-accent-text:#ccfbf1;--pl-warning-bg:rgba(217,119,6,.14);--pl-warning-panel:#fff7ed;--pl-warning-text:#9a5b06;--pl-warning-border:rgba(217,119,6,.28);--pl-danger:#b42318;--pl-danger-soft:rgba(180,35,24,.12);--pl-danger-border:rgba(180,35,24,.22);--pl-code-bg:#0f172a;--pl-code-text:#e2e8f0;display:grid;grid-template-columns:280px minmax(0,1fr);height:100%;min-height:0;background:linear-gradient(180deg,rgba(15,23,42,.05),transparent 20%),var(--pl-bg);color:var(--pl-text)}',
-      'html[data-theme="dark"] .persona-lab-root{--pl-bg:#020817;--pl-surface:#0f172a;--pl-surface-muted:#111c30;--pl-surface-strong:#162338;--pl-border:#314158;--pl-border-soft:#405168;--pl-text:#f8fbff;--pl-text-muted:#d3dded;--pl-text-soft:#aab9cf;--pl-accent:#67e8f9;--pl-accent-strong:#a5f3fc;--pl-accent-soft:rgba(103,232,249,.2);--pl-accent-panel:#082733;--pl-accent-text:#ecfeff;--pl-warning-bg:#36250a;--pl-warning-panel:#241706;--pl-warning-text:#fde68a;--pl-warning-border:#7c5712;--pl-danger:#fca5a5;--pl-danger-soft:#351318;--pl-danger-border:#7f2733;--pl-code-bg:#010713;--pl-code-text:#eff6ff}',
-      '.persona-lab-root{display:grid;grid-template-columns:280px minmax(0,1fr);height:100%;min-height:0}',
-      '.persona-lab-nav{border-right:1px solid var(--pl-border);padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0;background:var(--pl-surface-muted)}',
-      '.persona-lab-nav-header{display:flex;align-items:center;justify-content:space-between;gap:8px}',
-      '.persona-lab-nav-title{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft);margin:0}',
-      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:8px;overflow:auto;padding-right:4px}',
-      '.persona-lab-nav-item{border:1px solid var(--pl-border);border-radius:12px;padding:10px 12px;background:var(--pl-surface-strong);cursor:pointer;display:flex;flex-direction:column;gap:6px;color:var(--pl-text)}',
-      '.persona-lab-nav-item.active{border-color:var(--pl-accent);box-shadow:0 0 0 1px var(--pl-accent-soft)}',
-      '.persona-lab-nav-item-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;font-size:13px}',
-      '.persona-lab-nav-item-meta{display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--pl-text-muted)}',
-      '.persona-lab-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.02em;background:rgba(127,145,170,.16);color:var(--pl-text-muted);border:1px solid transparent}',
-      '.persona-lab-badge.dirty{background:var(--pl-warning-bg);color:var(--pl-warning-text)}',
-      '.persona-lab-badge.status-succeeded{background:var(--pl-accent-soft);border-color:rgba(103,232,249,.28);color:var(--pl-accent-strong)}',
-      '.persona-lab-badge.status-running,.persona-lab-badge.status-pending,.persona-lab-badge.status-created{background:rgba(59,130,246,.14);border-color:rgba(96,165,250,.28);color:#93c5fd}',
-      '.persona-lab-badge.status-failed,.persona-lab-badge.status-cancelled,.persona-lab-badge.status-partial_failed{background:var(--pl-danger-soft);border-color:var(--pl-danger-border);color:var(--pl-danger)}',
-      '.persona-lab-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;background:var(--pl-surface-strong);border:1px solid var(--pl-border-soft);font-size:12px;font-weight:600;color:var(--pl-text)}',
-      '.persona-lab-chip-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft)}',
-      '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0}',
-      '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px 14px;border-bottom:1px solid var(--pl-border)}',
-      '.persona-lab-toolbar h1{margin:0;font-size:24px;line-height:1.2}',
-      '.persona-lab-toolbar p{margin:6px 0 0;color:var(--pl-text-muted);max-width:760px}',
+      '.persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-blur:12px;--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success:#22c55e;--color-success-bg:rgba(34,197,94,0.15);--color-success-text:#86efac;--color-error:#ef4444;--color-error-bg:rgba(239,68,68,0.15);--color-error-text:#fca5a5;--color-warning:#eab308;--color-warning-bg:rgba(234,179,8,0.15);--color-warning-text:#fde047;--color-info:#3b82f6;--color-info-bg:rgba(59,130,246,0.15);--color-info-text:#93bbfd;--font-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;display:grid;grid-template-columns:304px minmax(0,1fr);height:100%;min-height:0;background:radial-gradient(circle at top left,rgba(129,140,248,0.18),transparent 28%),radial-gradient(circle at bottom right,rgba(45,212,191,0.14),transparent 24%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent 28%),var(--bg-app);color:var(--text-primary);font-family:var(--font-sans)}',
+      '@media (prefers-color-scheme: light){.persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}}',
+      'html[data-theme="dark"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success-text:#86efac;--color-error-text:#fca5a5;--color-warning-text:#fde047;--color-info-text:#93bbfd}',
+      'html[data-theme="light"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}',
+      '.persona-lab-root,.persona-lab-root *{box-sizing:border-box}',
+      '.persona-lab-root button,.persona-lab-root input,.persona-lab-root textarea,.persona-lab-root select{font:inherit}',
+      '.persona-lab-root code{font-family:var(--font-mono)}',
+      '@keyframes persona-lab-stagger-fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}',
+      '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
+      '.persona-lab-nav{padding:18px;display:flex;flex-direction:column;gap:14px;min-height:0;background:linear-gradient(180deg,rgba(129,140,248,0.16),transparent 240px),var(--glass-bg-heavy)}',
+      '.persona-lab-nav-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
+      '.persona-lab-nav-title{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
+      '.persona-lab-nav-header strong{display:block;margin-top:4px;font-size:18px;line-height:1.2}',
+      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
+      '.persona-lab-nav-list::-webkit-scrollbar,.persona-lab-content::-webkit-scrollbar,.persona-lab-modal::-webkit-scrollbar,.persona-lab-drawer-body::-webkit-scrollbar{width:8px;height:8px}',
+      '.persona-lab-nav-list::-webkit-scrollbar-thumb,.persona-lab-content::-webkit-scrollbar-thumb,.persona-lab-modal::-webkit-scrollbar-thumb,.persona-lab-drawer-body::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
+      '.persona-lab-nav-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);cursor:pointer;display:flex;flex-direction:column;gap:7px;color:var(--text-primary);text-align:left;transition:border-color .15s ease,transform .15s ease,background .15s ease;animation:persona-lab-stagger-fade-in .24s ease both}',
+      '.persona-lab-nav-item:hover{border-color:var(--accent-primary);background:var(--bg-surface)}',
+      '.persona-lab-nav-item.active{border-color:var(--accent-primary);background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 55%),var(--bg-surface);transform:translateY(-1px)}',
+      '.persona-lab-nav-item code{font-size:11px;color:var(--text-tertiary)}',
+      '.persona-lab-nav-item-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;font-size:14px;line-height:1.35}',
+      '.persona-lab-nav-item-meta{display:flex;flex-wrap:wrap;gap:6px}',
+      '.persona-lab-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid transparent;background:var(--bg-surface);color:var(--text-secondary);font-size:11px;font-weight:600;line-height:1.2}',
+      '.persona-lab-badge.dirty{background:var(--color-warning-bg);color:var(--color-warning-text)}',
+      '.persona-lab-badge.status-succeeded,.persona-lab-badge.status-completed{background:var(--color-success-bg);color:var(--color-success-text)}',
+      '.persona-lab-badge.status-running,.persona-lab-badge.status-pending,.persona-lab-badge.status-created{background:var(--color-info-bg);color:var(--color-info-text)}',
+      '.persona-lab-badge.status-failed,.persona-lab-badge.status-cancelled,.persona-lab-badge.status-partial_failed{background:var(--color-error-bg);color:var(--color-error-text)}',
+      '.persona-lab-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:var(--bg-surface-subtle);border:1px solid var(--glass-border);font-size:12px;font-weight:600;color:var(--text-primary)}',
+      '.persona-lab-chip-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0;padding:18px 18px 18px 0;gap:14px}',
+      '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:22px;animation:persona-lab-stagger-fade-in .28s ease both}',
+      '.persona-lab-toolbar h1{margin:4px 0 0;font-size:30px;line-height:1.05;letter-spacing:-.03em}',
+      '.persona-lab-toolbar p{margin:8px 0 0;color:var(--text-secondary);max-width:760px;line-height:1.6}',
       '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
-      '.persona-lab-button{appearance:none;border:1px solid var(--pl-border);background:var(--pl-surface-strong);color:var(--pl-text);border-radius:10px;padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease}',
-      '.persona-lab-button:hover:not(:disabled){border-color:var(--pl-accent);transform:translateY(-1px)}',
-      '.persona-lab-button.primary{background:var(--pl-accent);border-color:var(--pl-accent);color:#042f2e;box-shadow:0 10px 24px rgba(15,118,110,.2)}',
-      '.persona-lab-button:disabled{cursor:not-allowed;opacity:1;color:var(--pl-text-soft);background:var(--pl-surface-muted);border-color:var(--pl-border)}',
-      '.persona-lab-button.primary:disabled{background:var(--pl-accent-soft);border-color:rgba(103,232,249,.28);color:var(--pl-accent-strong);box-shadow:none}',
+      '.persona-lab-button{appearance:none;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,color .15s ease}',
+      '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface);transform:translateY(-1px)}',
+      '.persona-lab-button.primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-primary-hover));border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(99,102,241,.28)}',
+      '.persona-lab-button:focus-visible,.persona-lab-input:focus-visible,.persona-lab-textarea:focus-visible,.persona-lab-select:focus-visible{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 3px var(--accent-primary-ghost)}',
+      '.persona-lab-button:disabled{cursor:not-allowed;opacity:.72;transform:none;background:var(--bg-surface-subtle);color:var(--text-tertiary)}',
+      '.persona-lab-button.primary:disabled{box-shadow:none}',
       '.persona-lab-status-stack{display:flex;flex-direction:column;gap:10px;max-width:920px}',
-      '.persona-lab-status,.persona-lab-error{font-size:13px;line-height:1.45;min-height:0;padding:0}',
-      '.persona-lab-status:not(:empty){padding:11px 12px;border-radius:12px;background:var(--pl-accent-soft);border:1px solid rgba(103,232,249,.26);color:var(--pl-accent-strong)}',
-      '.persona-lab-error:not(:empty){padding:11px 12px;border-radius:12px;background:var(--pl-danger-soft);border:1px solid var(--pl-danger-border);color:var(--pl-danger)}',
-      '.persona-lab-content{overflow:auto;padding:20px 22px 32px;display:flex;flex-direction:column;gap:18px}',
+      '.persona-lab-status,.persona-lab-error{font-size:13px;line-height:1.5;min-height:0;padding:0}',
+      '.persona-lab-status:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-info-bg);border:1px solid rgba(59,130,246,.18);color:var(--color-info-text)}',
+      '.persona-lab-error:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-error-bg);border:1px solid rgba(239,68,68,.2);color:var(--color-error-text)}',
+      '.persona-lab-content{overflow:auto;padding:2px 0 16px 0;display:flex;flex-direction:column;gap:18px;min-height:0}',
       '.persona-lab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}',
-      '.persona-lab-panel{border:1px solid var(--pl-border);border-radius:16px;background:var(--pl-surface);padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 24px rgba(15,23,42,.04)}',
+      '.persona-lab-panel{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-panel.compact{gap:10px}',
-      '.persona-lab-panel h2,.persona-lab-panel h3{margin:0;font-size:16px}',
-      '.persona-lab-panel p{margin:0;color:var(--pl-text-muted)}',
-      '.persona-lab-field{display:flex;flex-direction:column;gap:6px}',
-      '.persona-lab-field label{font-size:12px;font-weight:600;color:var(--pl-text-muted)}',
-      '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--pl-border);border-radius:10px;padding:10px 12px;background:var(--pl-surface-strong);color:var(--pl-text);font:inherit}',
-      '.persona-lab-textarea{min-height:110px;resize:vertical}',
-      '.persona-lab-textarea.json{min-height:140px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}',
-      '.persona-lab-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}',
-      '.persona-lab-choice{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-panel h2,.persona-lab-panel h3{margin:0;font-size:18px;line-height:1.25;letter-spacing:-.01em}',
+      '.persona-lab-panel p{margin:0;color:var(--text-secondary);line-height:1.6}',
+      '.persona-lab-field{display:flex;flex-direction:column;gap:8px}',
+      '.persona-lab-field label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);color:var(--text-primary)}',
+      '.persona-lab-input::placeholder,.persona-lab-textarea::placeholder{color:var(--text-tertiary)}',
+      '.persona-lab-textarea{min-height:110px;resize:vertical;line-height:1.55}',
+      '.persona-lab-textarea.json{min-height:140px;font-family:var(--font-mono);font-size:12px}',
+      '.persona-lab-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}',
+      '.persona-lab-choice{display:flex;align-items:flex-start;gap:10px;border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-choice input{margin-top:2px}',
       '.persona-lab-choice strong,.persona-lab-choice code{display:block}',
-      '.persona-lab-choice code{font-size:11px;color:var(--pl-text-soft)}',
+      '.persona-lab-choice strong{margin-bottom:4px}',
+      '.persona-lab-choice code{font-size:11px;color:var(--text-tertiary)}',
       '.persona-lab-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
       '.persona-lab-section-list{display:flex;flex-direction:column;gap:12px}',
-      '.persona-lab-skill{border:1px solid var(--pl-border-soft);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-skill{border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-skill-header{display:flex;align-items:center;justify-content:space-between;gap:12px}',
-      '.persona-lab-json{margin:0;white-space:pre-wrap;word-break:break-word;background:var(--pl-code-bg);color:var(--pl-code-text);border-radius:12px;padding:14px;font-size:12px;line-height:1.5;overflow:auto}',
-      '.persona-lab-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}',
+      '.persona-lab-json{margin:0;white-space:pre-wrap;word-break:break-word;background:rgba(15,23,42,.88);color:#e5eefc;border-radius:16px;padding:14px;font-size:12px;line-height:1.55;overflow:auto;border:1px solid rgba(148,163,184,.2)}',
+      'html[data-theme="light"] .persona-lab-json,.persona-lab-root[data-theme="light"] .persona-lab-json{background:rgba(15,23,42,.96);color:#e5eefc}',
+      '.persona-lab-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text-secondary)}',
       '.persona-lab-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}',
-      '.persona-lab-kv-item{border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
-      '.persona-lab-kv-item span{display:block;font-size:11px;color:var(--pl-text-soft);margin-bottom:4px}',
-      '.persona-lab-empty{padding:24px;border:1px dashed var(--pl-border);border-radius:16px;background:var(--pl-surface-muted);color:var(--pl-text-muted)}',
-      '.persona-lab-run-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}',
-      '.persona-lab-run-card{border:1px solid var(--pl-border-soft);border-radius:18px;padding:16px;background:var(--pl-surface);display:flex;flex-direction:column;gap:14px;box-shadow:0 16px 36px rgba(2,6,23,.14)}',
+      '.persona-lab-kv-item{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-kv-item span{display:block;font-size:11px;color:var(--text-tertiary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}',
+      '.persona-lab-empty{padding:24px;border:1px dashed var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);color:var(--text-secondary);line-height:1.6}',
+      '.persona-lab-run-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}',
+      '.persona-lab-run-card{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(180deg,rgba(129,140,248,.08),transparent 45%),var(--glass-bg);animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-run-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}',
-      '.persona-lab-run-card-header strong{display:block;font-size:18px;line-height:1.2}',
-      '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft);font-weight:700}',
+      '.persona-lab-run-card-header strong{display:block;font-size:19px;line-height:1.15}',
+      '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
       '.persona-lab-run-subtitle{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}',
-      '.persona-lab-run-note{font-size:12px;color:var(--pl-text-muted);line-height:1.5}',
+      '.persona-lab-run-note{font-size:12px;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-run-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
-      '.persona-lab-run-metric{border:1px solid var(--pl-border-soft);border-radius:14px;padding:12px;background:var(--pl-surface-strong)}',
-      '.persona-lab-run-metric span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--pl-text-soft);margin-bottom:6px}',
-      '.persona-lab-run-metric strong{display:block;font-size:18px;line-height:1.15;color:var(--pl-text)}',
-      '.persona-lab-run-actions{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}',
+      '.persona-lab-run-metric,.persona-lab-metric-card{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-run-metric span,.persona-lab-metric-card span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;font-weight:700}',
+      '.persona-lab-run-metric strong,.persona-lab-metric-card strong{display:block;font-size:18px;line-height:1.15;color:var(--text-primary)}',
+      '.persona-lab-run-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
       '.persona-lab-run-actions-copy{display:flex;flex-direction:column;gap:4px;min-width:180px}',
       '.persona-lab-run-actions-buttons{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
-      '.persona-lab-helper{font-size:12px;color:var(--pl-text-muted)}',
-      '.persona-lab-overlay{position:fixed;inset:0;background:#08101d;display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999}',
-      '.persona-lab-modal{width:min(980px,100%);max-height:min(88vh,900px);overflow:auto;border:1px solid var(--pl-border);border-radius:22px;background:var(--pl-surface);box-shadow:0 24px 80px rgba(15,23,42,.36);display:flex;flex-direction:column}',
-      '.persona-lab-modal-header{padding:22px 22px 18px;border-bottom:1px solid var(--pl-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
-      '.persona-lab-modal-header h2{margin:0;font-size:22px}',
-      '.persona-lab-modal-header p{margin:6px 0 0;color:var(--pl-text-muted);max-width:720px}',
-      '.persona-lab-modal-body{padding:20px 22px;display:flex;flex-direction:column;gap:18px}',
-      '.persona-lab-modal-footer{padding:18px 22px;border-top:1px solid var(--pl-border);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}',
-      '.persona-lab-stepper{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
-      '.persona-lab-step{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:var(--pl-surface-muted);border:1px solid var(--pl-border-soft);font-size:12px;color:var(--pl-text-muted)}',
-      '.persona-lab-step.active{border-color:var(--pl-accent);background:var(--pl-accent-soft);color:var(--pl-text)}',
-      '.persona-lab-review-list{display:flex;flex-direction:column;gap:10px}',
-      '.persona-lab-review-item{border:1px solid var(--pl-border-soft);border-radius:12px;background:var(--pl-surface-muted);padding:12px}',
-      '.persona-lab-summary-banner{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--pl-border-soft);border-radius:14px;background:var(--pl-surface-strong)}',
-      '.persona-lab-summary-banner.success{border-color:rgba(103,232,249,.26);background:var(--pl-accent-panel)}',
-      '.persona-lab-summary-banner.warning{border-color:var(--pl-warning-border);background:var(--pl-warning-panel)}',
+      '.persona-lab-helper{font-size:12px;color:var(--text-secondary);line-height:1.5}',
+      '.persona-lab-overlay,.persona-lab-drawer-overlay{position:fixed;inset:0;background:rgba(6,10,24,.58);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;z-index:9999}',
+      '.persona-lab-overlay{align-items:center;justify-content:center;padding:20px}',
+      '.persona-lab-modal{width:min(980px,100%);max-height:min(88vh,900px);overflow:auto;border-radius:24px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(129,140,248,.1),transparent 22%),var(--glass-bg-heavy)}',
+      '.persona-lab-modal-header,.persona-lab-modal-footer{padding:22px;border-bottom:1px solid var(--glass-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+      '.persona-lab-modal-header h2{margin:4px 0 0;font-size:24px;line-height:1.1;letter-spacing:-.03em}',
+      '.persona-lab-modal-header p{margin:8px 0 0;color:var(--text-secondary);max-width:720px;line-height:1.6}',
+      '.persona-lab-modal-body{padding:22px;display:flex;flex-direction:column;gap:18px}',
+      '.persona-lab-modal-footer{border-top:1px solid var(--glass-border);border-bottom:none;align-items:center;flex-wrap:wrap}',
+      '.persona-lab-stepper{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
+      '.persona-lab-step{display:flex;align-items:center;justify-content:center;padding:12px 14px;border-radius:16px;background:var(--bg-surface-subtle);border:1px solid var(--glass-border);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-step.active{border-color:rgba(129,140,248,.38);background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 70%),var(--bg-surface);color:var(--text-primary)}',
+      '.persona-lab-review-list,.persona-lab-comparison-list,.persona-lab-turn-list{display:flex;flex-direction:column;gap:10px}',
+      '.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-comparison-item{display:flex;align-items:center;justify-content:space-between;gap:12px}',
+      '.persona-lab-comparison-item strong,.persona-lab-turn-card h4{display:block;margin:0 0 8px}',
+      '.persona-lab-summary-banner{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 16px;border-radius:18px;background:var(--bg-surface)}',
+      '.persona-lab-summary-banner.success{border-color:rgba(34,197,94,.24);background:linear-gradient(135deg,rgba(34,197,94,.14),transparent 65%),var(--bg-surface)}',
+      '.persona-lab-summary-banner.warning{border-color:rgba(234,179,8,.24);background:linear-gradient(135deg,rgba(234,179,8,.14),transparent 65%),var(--bg-surface)}',
       '.persona-lab-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}',
-      '.persona-lab-metric-card{border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
-      '.persona-lab-metric-card span{display:block;font-size:11px;color:var(--pl-text-soft);margin-bottom:4px}',
-      '.persona-lab-run-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}',
-      '.persona-lab-comparison-list{display:flex;flex-direction:column;gap:8px}',
-      '.persona-lab-comparison-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
-      '.persona-lab-comparison-item strong{display:block}',
-      '.persona-lab-turn-list{display:flex;flex-direction:column;gap:10px}',
-      '.persona-lab-turn-card{border:1px solid var(--pl-border-soft);border-radius:12px;padding:12px;background:var(--pl-surface-muted)}',
-      '.persona-lab-turn-card h4{margin:0 0 10px;font-size:14px}',
-      '.persona-lab-drawer-overlay{position:fixed;inset:0;background:#08101d;display:flex;justify-content:flex-end;z-index:10000}',
-      '.persona-lab-drawer{width:min(760px,100%);height:100%;background:var(--pl-surface);border-left:1px solid var(--pl-border);box-shadow:-16px 0 48px rgba(15,23,42,.18);display:flex;flex-direction:column}',
-      '.persona-lab-drawer-header{padding:20px 22px 16px;border-bottom:1px solid var(--pl-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
-      '.persona-lab-drawer-header h2{margin:0;font-size:20px}',
+      '.persona-lab-drawer-overlay{justify-content:flex-end;z-index:10000}',
+      '.persona-lab-drawer{width:min(760px,100%);height:100%;border-left:1px solid var(--glass-border);display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(129,140,248,.1),transparent 18%),var(--glass-bg-heavy)}',
+      '.persona-lab-drawer-header{padding:20px 22px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+      '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:-.02em}',
+      '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{border-right:none;border-bottom:1px solid var(--pl-border)}.persona-lab-grid{grid-template-columns:1fr}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper{grid-template-columns:1fr}}',
+      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}}',
     ].join('');
     document.head.appendChild(style);
   }
@@ -221,7 +233,7 @@
         /failed to connect to 127\.0\.0\.1 port 3000/i.test(error.message) ||
         /error sending request for url \(http:\/\/127\.0\.0\.1:3000/i.test(error.message)
       ) {
-        return 'Persona Lab could not reach the ProPaasAI dev server at http://127.0.0.1:3000. Start `pnpm dev` in the ProPaasAI repo, then refresh this tab.';
+        return 'Persona Studio could not reach the ProPaasAI dev server at http://127.0.0.1:3000. Start `pnpm dev` in the ProPaasAI repo, then refresh this tab.';
       }
       return error.message;
     }
@@ -781,7 +793,7 @@
     }
     return {
       id: launch.threadId,
-      title: launch.title || 'Persona Lab run',
+      title: launch.title || 'Persona Studio run',
       organizationId: launch.organizationId || null,
       workspaceId: launch.workspaceId || null,
       projectId: launch.projectId || null,
@@ -805,7 +817,7 @@
           }
         }
         if (remaining <= 0) {
-          reject(new Error('Timed out waiting for the Persona Lab thread to appear in MCPViews.'));
+          reject(new Error('Timed out waiting for the Persona Studio thread to appear in MCPViews.'));
           return;
         }
         var hydratePromise = Promise.resolve();
@@ -1094,7 +1106,7 @@
     var launch = findBatchLaunch(state, run);
     var threadSeed = launch || {
       threadId: run.threadId,
-      title: run.label || 'Persona Lab run',
+      title: run.label || 'Persona Studio run',
       organizationId: run.organizationId || null,
       workspaceId: run.workspaceId || null,
       projectId: run.projectId || null,
@@ -1173,7 +1185,7 @@
     }
 
     state.testing = true;
-    setStatus(state, state.dirty ? 'Saving draft before launching test...' : 'Launching Persona Lab test...');
+    setStatus(state, state.dirty ? 'Saving draft before launching test...' : 'Launching workshop test...');
     renderState(state);
 
     var savePromise = state.dirty ? savePersona(state) : Promise.resolve();
@@ -1243,7 +1255,7 @@
 
   function launchBatch(state) {
     if (!state.selectedPersonaKey) {
-      setError(state, 'Select a persona before launching a parallel evaluation.');
+      setError(state, 'Select a persona before launching parallel runs.');
       renderState(state);
       return Promise.reject(new Error('No persona selected.'));
     }
@@ -1262,8 +1274,8 @@
     setStatus(
       state,
       state.dirty
-        ? 'Saving draft before launching parallel evaluation...'
-        : 'Launching parallel evaluation...'
+        ? 'Saving draft before launching parallel runs...'
+        : 'Launching parallel runs...'
     );
     renderState(state);
 
@@ -1280,7 +1292,7 @@
         var batch = batchRecord(response);
         var launches = batchLaunches(response);
         if (!batch || !batch.id) {
-          throw new Error('Parallel evaluation launch did not return a batch record.');
+          throw new Error('Parallel run launch did not return a batch record.');
         }
         state.lastBatchId = batch.id;
         state.batchDetails = response;
@@ -1296,11 +1308,11 @@
         state.batchWizardOpen = false;
         setStatus(
           state,
-          'Parallel evaluation created. Opening ' +
+          'Parallel run batch created. Opening ' +
             launches.length +
             ' chat' +
             (launches.length === 1 ? '' : 's') +
-            ' and updating Parallel Evaluations below...'
+            ' and updating Parallel Runs below...'
         );
         renderState(state);
         startBatchPolling(state, batch.id);
@@ -1333,18 +1345,18 @@
           );
           setStatus(
             state,
-            'Parallel evaluation created. ' +
+            'Parallel run batch created. ' +
               summary.openedCount +
               ' of ' +
               summary.totalRuns +
-              ' chats opened automatically. Use Open chat in Parallel Evaluations below for any run that did not appear.'
+              ' chats opened automatically. Use Open chat in Parallel Runs below for any run that did not appear.'
           );
         } else {
           setStatus(
             state,
-            'Parallel evaluation launched. ' +
+            'Parallel runs launched. ' +
               summary.totalRuns +
-              ' chats opened, and the batch is now available below in Parallel Evaluations.'
+              ' chats opened, and the batch is now available below in Parallel Runs.'
           );
         }
       })
@@ -1389,7 +1401,7 @@
     if (!key) return;
     var displayName = window.prompt('Display name', key);
     if (!displayName) return;
-    var description = window.prompt('Description', displayName + ' persona draft created from Persona Lab.') || '';
+    var description = window.prompt('Description', displayName + ' persona draft created from Persona Studio.') || '';
 
     request('POST', '/admin/persona-studio/personas', {
       key: key,
@@ -1462,8 +1474,8 @@
     var nav = createEl('aside', 'persona-lab-nav');
     var header = createEl('div', 'persona-lab-nav-header');
     var copy = createEl('div');
-    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Personas'));
-    copy.appendChild(createEl('strong', null, 'Navigator'));
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('strong', null, 'Personas'));
     header.appendChild(copy);
     var createButton = createEl('button', 'persona-lab-button', 'New');
     createButton.type = 'button';
@@ -1634,9 +1646,9 @@
 
   function renderLatestRunPanel(state) {
     var panel = createEl('section', 'persona-lab-panel');
-    panel.appendChild(createEl('h2', null, 'Latest Test Run'));
+    panel.appendChild(createEl('h2', null, 'Latest Single Run'));
     if (!state.runDetails || !state.runDetails.run) {
-      panel.appendChild(createEl('div', 'persona-lab-empty', 'No Persona Lab test run has been launched from this tab yet.'));
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'No single-run workshop test has been launched from this tab yet.'));
       return panel;
     }
 
@@ -1853,14 +1865,14 @@
 
   function renderLatestBatchPanel(state) {
     var panel = createEl('section', 'persona-lab-panel persona-lab-batch-panel');
-    panel.appendChild(createEl('h2', null, 'Parallel Evaluations'));
+    panel.appendChild(createEl('h2', null, 'Parallel Runs'));
 
     if (!state.batchDetails || !batchRecord(state.batchDetails)) {
       panel.appendChild(
         createEl(
           'div',
           'persona-lab-empty',
-          'No parallel evaluation batch has been launched for this persona in Persona Lab yet.'
+          'No parallel run batch has been launched for this persona in Persona Studio yet.'
         )
       );
       return panel;
@@ -1954,12 +1966,13 @@
 
     var header = createEl('div', 'persona-lab-modal-header');
     var copy = createEl('div');
-    copy.appendChild(createEl('h2', null, 'Parallel Evaluation Wizard'));
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('h2', null, 'Parallel Run Wizard'));
     copy.appendChild(
       createEl(
         'p',
         null,
-        'Create a persisted test batch that opens multiple native AI tabs from one saved persona draft.'
+        'Create a persisted run batch that opens multiple native AI tabs from one saved persona draft.'
       )
     );
     header.appendChild(copy);
@@ -2000,7 +2013,7 @@
         createEl(
           'p',
           null,
-          'Start with the number of comparisons you want. Persona Lab will generate one configuration slot per run.'
+          'Start with the number of comparisons you want. The workshop will generate one configuration slot per run.'
         )
       );
       var countInput = createEl('input', 'persona-lab-input');
@@ -2132,7 +2145,7 @@
       createEl(
         'div',
         'persona-lab-helper',
-        state.dirty ? 'Persona Lab will save your draft before launching the batch.' : 'Saved draft is ready to launch.'
+        state.dirty ? 'The workshop will save your draft before launching the batch.' : 'Saved draft is ready to launch.'
       )
     );
     var actions = createEl('div', 'persona-lab-actions');
@@ -2171,7 +2184,7 @@
       var launchButton = createEl(
         'button',
         'persona-lab-button primary',
-        state.launchingBatch ? 'Launching…' : 'Launch Parallel Evaluation'
+        state.launchingBatch ? 'Launching…' : 'Launch Parallel Runs'
       );
       launchButton.type = 'button';
       launchButton.disabled = state.launchingBatch;
@@ -2203,6 +2216,7 @@
 
     var header = createEl('div', 'persona-lab-drawer-header');
     var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
     var run = state.runDetailPayload && state.runDetailPayload.run;
     var runLabel = run && run.batchRunConfig && run.batchRunConfig.label
       ? run.batchRunConfig.label
@@ -2290,12 +2304,13 @@
     var shell = createEl('main', 'persona-lab-shell');
     var toolbar = createEl('div', 'persona-lab-toolbar');
     var titleCopy = createEl('div');
-    titleCopy.appendChild(createEl('h1', null, 'Persona Lab'));
+    titleCopy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    titleCopy.appendChild(createEl('h1', null, 'Persona Studio'));
     titleCopy.appendChild(
       createEl(
         'p',
         null,
-        'Edit the file-backed persona draft, save it to disk, and launch a native MCPViews AI chat tab that tests the exact saved configuration.'
+        'Edit the file-backed persona draft, save it to disk, and launch single or parallel native MCPViews AI chats that test the exact saved configuration.'
       )
     );
     toolbar.appendChild(titleCopy);
@@ -2320,7 +2335,7 @@
     var batchButton = createEl(
       'button',
       'persona-lab-button primary',
-      state.launchingBatch ? 'Launching…' : 'Parallel Evaluation'
+      state.launchingBatch ? 'Launching…' : 'Parallel Runs'
     );
     batchButton.type = 'button';
     batchButton.disabled = !state.form || state.testing || state.loadingPersona || state.launchingBatch;
@@ -2333,19 +2348,21 @@
     toolbar.appendChild(actions);
     shell.appendChild(toolbar);
 
-    var statusRow = createEl('div', 'persona-lab-toolbar');
-    statusRow.style.paddingTop = '0';
-    statusRow.style.paddingBottom = '0';
-    statusRow.style.borderBottom = 'none';
-    var statusWrap = createEl('div', 'persona-lab-status-stack');
-    statusWrap.appendChild(createEl('div', 'persona-lab-status', state.status || ''));
-    statusWrap.appendChild(createEl('div', 'persona-lab-error', state.error || ''));
-    statusRow.appendChild(statusWrap);
-    shell.appendChild(statusRow);
+    if (state.status || state.error) {
+      var statusRow = createEl('div', 'persona-lab-toolbar');
+      statusRow.style.paddingTop = '0';
+      statusRow.style.paddingBottom = '0';
+      statusRow.style.borderBottom = 'none';
+      var statusWrap = createEl('div', 'persona-lab-status-stack');
+      statusWrap.appendChild(createEl('div', 'persona-lab-status', state.status || ''));
+      statusWrap.appendChild(createEl('div', 'persona-lab-error', state.error || ''));
+      statusRow.appendChild(statusWrap);
+      shell.appendChild(statusRow);
+    }
 
     var content = createEl('div', 'persona-lab-content');
     if (state.loading || state.loadingPersona) {
-      content.appendChild(createEl('div', 'persona-lab-empty', 'Loading Persona Lab…'));
+      content.appendChild(createEl('div', 'persona-lab-empty', 'Loading Persona Studio…'));
       shell.appendChild(content);
       return shell;
     }

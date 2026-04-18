@@ -5,16 +5,16 @@
   "renderer_definitions": [
     {
       "name": "persona_lab",
-      "description": "Standalone local persona editor with save-first single-run and parallel evaluation launchers for ProPaasAI personas.",
+      "description": "Standalone Persona Studio for editing ProPaasAI personas and launching save-first single-run and parallel run batches.",
       "scope": "universal",
       "data_hint": "{}",
       "display_mode": "replace",
       "standalone": true,
-      "standalone_label": "Persona Lab"
+      "standalone_label": "Persona Studio"
     }
   ],
   "registry_index": {
-    "summary": "Standalone Persona Lab for editing file-backed personas and launching native MCPViews single-run and parallel evaluation test chats.",
+    "summary": "Standalone Persona Studio for editing file-backed personas and launching native MCPViews single-run and parallel run test chats.",
     "tags": [
       "persona",
       "ai",
@@ -27,6 +27,6 @@
     ]
   },
   "plugin_rules": [
-    "Persona Lab is a standalone localhost renderer that edits file-backed ProPaasAI personas and launches save-first native AI single runs and parallel evaluation batches in MCPViews."
+    "Persona Studio is a standalone localhost renderer that edits file-backed ProPaasAI personas and launches save-first native AI single runs and parallel run batches in MCPViews."
   ]
 }
