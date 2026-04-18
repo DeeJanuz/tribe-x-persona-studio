@@ -79,7 +79,6 @@
         batchLaunchSummary: null,
         batchPollTimer: null,
         batchAutoOpenTimer: null,
-        submittedBatchPromptRunIds: {},
         submittingBatchPromptRunIds: {},
         runDetailOpen: false,
         runDetailLoading: false,
@@ -597,6 +596,23 @@
     });
   }
 
+  function replacePanelInPlace(state, selector, nextPanel) {
+    if (!state.container) return false;
+    var existing = state.container.querySelector(selector);
+    if (!existing || !existing.parentNode || !nextPanel) {
+      return false;
+    }
+    existing.parentNode.replaceChild(nextPanel, existing);
+    return true;
+  }
+
+  function renderBatchPanel(state) {
+    var panel = renderLatestBatchPanel(state);
+    if (!replacePanelInPlace(state, '.persona-lab-batch-panel', panel)) {
+      renderState(state);
+    }
+  }
+
   function summarizeBatchLaunchResults(batchId, launches, results) {
     var openedCount = 0;
     var failed = [];
@@ -693,7 +709,6 @@
           state.batchDetails = null;
           state.batchLaunches = [];
           state.batchLaunchSummary = null;
-          state.submittedBatchPromptRunIds = {};
           state.submittingBatchPromptRunIds = {};
           renderState(state);
         }
@@ -808,6 +823,54 @@
     window.__tribexAiState.setThreadDraft(threadId, prompt);
   }
 
+  function waitForThreadContext(threadId, attempts) {
+    attempts = attempts || 10;
+    return new Promise(function (resolve) {
+      function tick(remaining) {
+        if (
+          !window.__tribexAiState ||
+          typeof window.__tribexAiState.getThreadContext !== 'function'
+        ) {
+          resolve(null);
+          return;
+        }
+        var threadContext = window.__tribexAiState.getThreadContext(threadId);
+        if (!threadContext || !threadContext.thread) {
+          if (remaining <= 0) {
+            resolve(null);
+            return;
+          }
+          window.setTimeout(function () {
+            tick(remaining - 1);
+          }, 250);
+          return;
+        }
+        if (!threadContext.loading || remaining <= 0) {
+          resolve(threadContext);
+          return;
+        }
+        window.setTimeout(function () {
+          tick(remaining - 1);
+        }, 250);
+      }
+      tick(attempts);
+    });
+  }
+
+  function threadHasExistingPromptHistory(threadContext) {
+    var thread = threadContext && threadContext.thread;
+    var messages = ensureArray(thread && (thread.displayMessages || thread.messages));
+    var hasUserMessage = messages.some(function (message) {
+      return message && message.role === 'user' && String(message.content || '').trim();
+    });
+    if (hasUserMessage) {
+      return true;
+    }
+    return ensureArray(thread && thread.runs).some(function (run) {
+      return !!(run && run.user && String(run.user.content || '').trim());
+    });
+  }
+
   function openThreadInNativeAi(threadId, organizationId, prompt) {
     if (!window.__tribexAiClient || !window.__tribexAiState) {
       return Promise.reject(new Error('The native AI UI is not available in this MCPViews session.'));
@@ -835,6 +898,7 @@
       .then(function () {
         aiState.openThread(threadId, { connectStream: false });
         primeThreadDraft(threadId, prompt);
+        return waitForThreadContext(threadId, 12);
       });
   }
 
@@ -927,7 +991,7 @@
         ensureArray(batchRunList(payload)).forEach(function (run) {
           primeThreadDraft(run.threadId, batchPromptForRun(run));
         });
-        renderState(state);
+        renderBatchPanel(state);
         return payload;
       })
       .catch(function (error) {
@@ -982,7 +1046,6 @@
       return Promise.resolve(false);
     }
     if (
-      state.submittedBatchPromptRunIds[runId] ||
       state.submittingBatchPromptRunIds[runId] ||
       !window.__tribexAiState ||
       typeof window.__tribexAiState.submitPrompt !== 'function'
@@ -991,11 +1054,14 @@
     }
 
     state.submittingBatchPromptRunIds[runId] = true;
-    return window.__tribexAiState.submitPrompt(launch.threadId, prompt)
-      .then(function (submitted) {
-        if (submitted) {
-          state.submittedBatchPromptRunIds[runId] = true;
+    return waitForThreadContext(launch.threadId, 16)
+      .then(function (threadContext) {
+        if (threadHasExistingPromptHistory(threadContext)) {
+          return false;
         }
+        return window.__tribexAiState.submitPrompt(launch.threadId, prompt);
+      })
+      .then(function (submitted) {
         return submitted;
       })
       .finally(function () {
@@ -1281,7 +1347,6 @@
     state.batchDetails = null;
     state.batchLaunches = [];
     state.batchLaunchSummary = null;
-    state.submittedBatchPromptRunIds = {};
     state.submittingBatchPromptRunIds = {};
     loadPersona(state, nextKey);
   }
@@ -1754,7 +1819,7 @@
   }
 
   function renderLatestBatchPanel(state) {
-    var panel = createEl('section', 'persona-lab-panel');
+    var panel = createEl('section', 'persona-lab-panel persona-lab-batch-panel');
     panel.appendChild(createEl('h2', null, 'Parallel Evaluations'));
 
     if (!state.batchDetails || !batchRecord(state.batchDetails)) {
