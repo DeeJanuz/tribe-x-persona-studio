@@ -1,0 +1,2569 @@
+// @ts-nocheck
+(function () {
+  'use strict';
+
+  window.__renderers = window.__renderers || {};
+
+  var GLOBAL_KEY = '__personaLabPluginState';
+  var SESSION_LABEL = 'Persona Lab';
+  var TERMINAL_RUN_STATUSES = {
+    SUCCEEDED: true,
+    FAILED: true,
+    CANCELLED: true,
+  };
+  var TERMINAL_BATCH_STATUSES = {
+    SUCCEEDED: true,
+    FAILED: true,
+    PARTIAL_FAILED: true,
+    CANCELLED: true,
+  };
+  var BATCH_STORAGE_KEY = '__personaLabBatchState';
+
+  function getGlobalState() {
+    if (!window[GLOBAL_KEY]) {
+      window[GLOBAL_KEY] = {
+        sessions: {},
+        stylesInjected: false,
+      };
+    }
+    return window[GLOBAL_KEY];
+  }
+
+  function clone(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function currentSessionId() {
+    if (
+      window.__companionUtils &&
+      typeof window.__companionUtils.getActiveSession === 'function'
+    ) {
+      var active = window.__companionUtils.getActiveSession();
+      return active && active.sessionId ? active.sessionId : 'persona-lab-default';
+    }
+    return 'persona-lab-default';
+  }
+
+  function getSessionState() {
+    var globalState = getGlobalState();
+    var sessionId = currentSessionId();
+    if (!globalState.sessions[sessionId]) {
+      globalState.sessions[sessionId] = {
+        sessionId: sessionId,
+        loading: false,
+        bootstrapLoaded: false,
+        bootstrapPromise: null,
+        personas: [],
+        registries: null,
+        selectedPersonaKey: null,
+        loadingPersona: false,
+        personaPromise: null,
+        current: null,
+        form: null,
+        dirty: false,
+        status: '',
+        error: '',
+        saving: false,
+        testing: false,
+        lastRunId: null,
+        runDetails: null,
+        pollTimer: null,
+        launchingBatch: false,
+        batchWizardOpen: false,
+        batchWizardStep: 1,
+        batchDraft: null,
+        batchError: '',
+        lastBatchId: null,
+        batchDetails: null,
+        batchLaunches: [],
+        batchLaunchSummary: null,
+        batchPollTimer: null,
+        batchAutoOpenTimer: null,
+        submittedBatchPromptRunIds: {},
+        submittingBatchPromptRunIds: {},
+        runDetailOpen: false,
+        runDetailLoading: false,
+        runDetailError: '',
+        runDetailRunId: null,
+        runDetailPayload: null,
+        contentScrollTop: 0,
+        contentScrollLeft: 0,
+        modalScrollTop: 0,
+        drawerScrollTop: 0,
+        chromeKey: '',
+      };
+    }
+    return globalState.sessions[sessionId];
+  }
+
+  function ensureStyles() {
+    var globalState = getGlobalState();
+    if (globalState.stylesInjected) {
+      return;
+    }
+    globalState.stylesInjected = true;
+
+    var style = document.createElement('style');
+    style.textContent = [
+      '.persona-lab-root{--pl-bg:#f6f8fb;--pl-surface:#ffffff;--pl-surface-muted:#f8fafc;--pl-surface-strong:#ffffff;--pl-border:#d8e1ec;--pl-border-soft:#dbe4ef;--pl-text:#0f172a;--pl-text-muted:#5b6b80;--pl-text-soft:#7b8aa0;--pl-accent:#0f766e;--pl-accent-strong:#0b5f58;--pl-accent-soft:rgba(15,118,110,.16);--pl-accent-panel:#e8fffb;--pl-accent-text:#ccfbf1;--pl-warning-bg:rgba(217,119,6,.14);--pl-warning-panel:#fff7ed;--pl-warning-text:#9a5b06;--pl-warning-border:rgba(217,119,6,.28);--pl-danger:#b42318;--pl-danger-soft:rgba(180,35,24,.12);--pl-danger-border:rgba(180,35,24,.22);--pl-code-bg:#0f172a;--pl-code-text:#e2e8f0;display:grid;grid-template-columns:280px minmax(0,1fr);height:100%;min-height:0;background:linear-gradient(180deg,rgba(15,23,42,.05),transparent 20%),var(--pl-bg);color:var(--pl-text)}',
+      'html[data-theme="dark"] .persona-lab-root{--pl-bg:#020817;--pl-surface:#0f172a;--pl-surface-muted:#111c30;--pl-surface-strong:#162338;--pl-border:#314158;--pl-border-soft:#405168;--pl-text:#f8fbff;--pl-text-muted:#d3dded;--pl-text-soft:#aab9cf;--pl-accent:#67e8f9;--pl-accent-strong:#a5f3fc;--pl-accent-soft:rgba(103,232,249,.2);--pl-accent-panel:#082733;--pl-accent-text:#ecfeff;--pl-warning-bg:#36250a;--pl-warning-panel:#241706;--pl-warning-text:#fde68a;--pl-warning-border:#7c5712;--pl-danger:#fca5a5;--pl-danger-soft:#351318;--pl-danger-border:#7f2733;--pl-code-bg:#010713;--pl-code-text:#eff6ff}',
+      '.persona-lab-root{display:grid;grid-template-columns:280px minmax(0,1fr);height:100%;min-height:0}',
+      '.persona-lab-nav{border-right:1px solid var(--pl-border);padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0;background:var(--pl-surface-muted)}',
+      '.persona-lab-nav-header{display:flex;align-items:center;justify-content:space-between;gap:8px}',
+      '.persona-lab-nav-title{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft);margin:0}',
+      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:8px;overflow:auto;padding-right:4px}',
+      '.persona-lab-nav-item{border:1px solid var(--pl-border);border-radius:12px;padding:10px 12px;background:var(--pl-surface-strong);cursor:pointer;display:flex;flex-direction:column;gap:6px;color:var(--pl-text)}',
+      '.persona-lab-nav-item.active{border-color:var(--pl-accent);box-shadow:0 0 0 1px var(--pl-accent-soft)}',
+      '.persona-lab-nav-item-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;font-size:13px}',
+      '.persona-lab-nav-item-meta{display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--pl-text-muted)}',
+      '.persona-lab-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.02em;background:rgba(127,145,170,.16);color:var(--pl-text-muted);border:1px solid transparent}',
+      '.persona-lab-badge.dirty{background:var(--pl-warning-bg);color:var(--pl-warning-text)}',
+      '.persona-lab-badge.status-succeeded{background:var(--pl-accent-soft);border-color:rgba(103,232,249,.28);color:var(--pl-accent-strong)}',
+      '.persona-lab-badge.status-running,.persona-lab-badge.status-pending,.persona-lab-badge.status-created{background:rgba(59,130,246,.14);border-color:rgba(96,165,250,.28);color:#93c5fd}',
+      '.persona-lab-badge.status-failed,.persona-lab-badge.status-cancelled,.persona-lab-badge.status-partial_failed{background:var(--pl-danger-soft);border-color:var(--pl-danger-border);color:var(--pl-danger)}',
+      '.persona-lab-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;background:var(--pl-surface-strong);border:1px solid var(--pl-border-soft);font-size:12px;font-weight:600;color:var(--pl-text)}',
+      '.persona-lab-chip-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft)}',
+      '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0}',
+      '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px 14px;border-bottom:1px solid var(--pl-border)}',
+      '.persona-lab-toolbar h1{margin:0;font-size:24px;line-height:1.2}',
+      '.persona-lab-toolbar p{margin:6px 0 0;color:var(--pl-text-muted);max-width:760px}',
+      '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
+      '.persona-lab-button{appearance:none;border:1px solid var(--pl-border);background:var(--pl-surface-strong);color:var(--pl-text);border-radius:10px;padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease}',
+      '.persona-lab-button:hover:not(:disabled){border-color:var(--pl-accent);transform:translateY(-1px)}',
+      '.persona-lab-button.primary{background:var(--pl-accent);border-color:var(--pl-accent);color:#042f2e;box-shadow:0 10px 24px rgba(15,118,110,.2)}',
+      '.persona-lab-button:disabled{cursor:not-allowed;opacity:1;color:var(--pl-text-soft);background:var(--pl-surface-muted);border-color:var(--pl-border)}',
+      '.persona-lab-button.primary:disabled{background:var(--pl-accent-soft);border-color:rgba(103,232,249,.28);color:var(--pl-accent-strong);box-shadow:none}',
+      '.persona-lab-status-stack{display:flex;flex-direction:column;gap:10px;max-width:920px}',
+      '.persona-lab-status,.persona-lab-error{font-size:13px;line-height:1.45;min-height:0;padding:0}',
+      '.persona-lab-status:not(:empty){padding:11px 12px;border-radius:12px;background:var(--pl-accent-soft);border:1px solid rgba(103,232,249,.26);color:var(--pl-accent-strong)}',
+      '.persona-lab-error:not(:empty){padding:11px 12px;border-radius:12px;background:var(--pl-danger-soft);border:1px solid var(--pl-danger-border);color:var(--pl-danger)}',
+      '.persona-lab-content{overflow:auto;padding:20px 22px 32px;display:flex;flex-direction:column;gap:18px}',
+      '.persona-lab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}',
+      '.persona-lab-panel{border:1px solid var(--pl-border);border-radius:16px;background:var(--pl-surface);padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 24px rgba(15,23,42,.04)}',
+      '.persona-lab-panel.compact{gap:10px}',
+      '.persona-lab-panel h2,.persona-lab-panel h3{margin:0;font-size:16px}',
+      '.persona-lab-panel p{margin:0;color:var(--pl-text-muted)}',
+      '.persona-lab-field{display:flex;flex-direction:column;gap:6px}',
+      '.persona-lab-field label{font-size:12px;font-weight:600;color:var(--pl-text-muted)}',
+      '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--pl-border);border-radius:10px;padding:10px 12px;background:var(--pl-surface-strong);color:var(--pl-text);font:inherit}',
+      '.persona-lab-textarea{min-height:110px;resize:vertical}',
+      '.persona-lab-textarea.json{min-height:140px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}',
+      '.persona-lab-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}',
+      '.persona-lab-choice{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-choice strong,.persona-lab-choice code{display:block}',
+      '.persona-lab-choice code{font-size:11px;color:var(--pl-text-soft)}',
+      '.persona-lab-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.persona-lab-section-list{display:flex;flex-direction:column;gap:12px}',
+      '.persona-lab-skill{border:1px solid var(--pl-border-soft);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-skill-header{display:flex;align-items:center;justify-content:space-between;gap:12px}',
+      '.persona-lab-json{margin:0;white-space:pre-wrap;word-break:break-word;background:var(--pl-code-bg);color:var(--pl-code-text);border-radius:12px;padding:14px;font-size:12px;line-height:1.5;overflow:auto}',
+      '.persona-lab-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}',
+      '.persona-lab-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}',
+      '.persona-lab-kv-item{border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-kv-item span{display:block;font-size:11px;color:var(--pl-text-soft);margin-bottom:4px}',
+      '.persona-lab-empty{padding:24px;border:1px dashed var(--pl-border);border-radius:16px;background:var(--pl-surface-muted);color:var(--pl-text-muted)}',
+      '.persona-lab-run-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}',
+      '.persona-lab-run-card{border:1px solid var(--pl-border-soft);border-radius:18px;padding:16px;background:var(--pl-surface);display:flex;flex-direction:column;gap:14px;box-shadow:0 16px 36px rgba(2,6,23,.14)}',
+      '.persona-lab-run-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}',
+      '.persona-lab-run-card-header strong{display:block;font-size:18px;line-height:1.2}',
+      '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--pl-text-soft);font-weight:700}',
+      '.persona-lab-run-subtitle{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}',
+      '.persona-lab-run-note{font-size:12px;color:var(--pl-text-muted);line-height:1.5}',
+      '.persona-lab-run-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
+      '.persona-lab-run-metric{border:1px solid var(--pl-border-soft);border-radius:14px;padding:12px;background:var(--pl-surface-strong)}',
+      '.persona-lab-run-metric span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--pl-text-soft);margin-bottom:6px}',
+      '.persona-lab-run-metric strong{display:block;font-size:18px;line-height:1.15;color:var(--pl-text)}',
+      '.persona-lab-run-actions{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}',
+      '.persona-lab-run-actions-copy{display:flex;flex-direction:column;gap:4px;min-width:180px}',
+      '.persona-lab-run-actions-buttons{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
+      '.persona-lab-helper{font-size:12px;color:var(--pl-text-muted)}',
+      '.persona-lab-overlay{position:fixed;inset:0;background:#08101d;display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999}',
+      '.persona-lab-modal{width:min(980px,100%);max-height:min(88vh,900px);overflow:auto;border:1px solid var(--pl-border);border-radius:22px;background:var(--pl-surface);box-shadow:0 24px 80px rgba(15,23,42,.36);display:flex;flex-direction:column}',
+      '.persona-lab-modal-header{padding:22px 22px 18px;border-bottom:1px solid var(--pl-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+      '.persona-lab-modal-header h2{margin:0;font-size:22px}',
+      '.persona-lab-modal-header p{margin:6px 0 0;color:var(--pl-text-muted);max-width:720px}',
+      '.persona-lab-modal-body{padding:20px 22px;display:flex;flex-direction:column;gap:18px}',
+      '.persona-lab-modal-footer{padding:18px 22px;border-top:1px solid var(--pl-border);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}',
+      '.persona-lab-stepper{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.persona-lab-step{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:var(--pl-surface-muted);border:1px solid var(--pl-border-soft);font-size:12px;color:var(--pl-text-muted)}',
+      '.persona-lab-step.active{border-color:var(--pl-accent);background:var(--pl-accent-soft);color:var(--pl-text)}',
+      '.persona-lab-review-list{display:flex;flex-direction:column;gap:10px}',
+      '.persona-lab-review-item{border:1px solid var(--pl-border-soft);border-radius:12px;background:var(--pl-surface-muted);padding:12px}',
+      '.persona-lab-summary-banner{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--pl-border-soft);border-radius:14px;background:var(--pl-surface-strong)}',
+      '.persona-lab-summary-banner.success{border-color:rgba(103,232,249,.26);background:var(--pl-accent-panel)}',
+      '.persona-lab-summary-banner.warning{border-color:var(--pl-warning-border);background:var(--pl-warning-panel)}',
+      '.persona-lab-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}',
+      '.persona-lab-metric-card{border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-metric-card span{display:block;font-size:11px;color:var(--pl-text-soft);margin-bottom:4px}',
+      '.persona-lab-run-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}',
+      '.persona-lab-comparison-list{display:flex;flex-direction:column;gap:8px}',
+      '.persona-lab-comparison-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--pl-border-soft);border-radius:12px;padding:10px;background:var(--pl-surface-muted)}',
+      '.persona-lab-comparison-item strong{display:block}',
+      '.persona-lab-turn-list{display:flex;flex-direction:column;gap:10px}',
+      '.persona-lab-turn-card{border:1px solid var(--pl-border-soft);border-radius:12px;padding:12px;background:var(--pl-surface-muted)}',
+      '.persona-lab-turn-card h4{margin:0 0 10px;font-size:14px}',
+      '.persona-lab-drawer-overlay{position:fixed;inset:0;background:#08101d;display:flex;justify-content:flex-end;z-index:10000}',
+      '.persona-lab-drawer{width:min(760px,100%);height:100%;background:var(--pl-surface);border-left:1px solid var(--pl-border);box-shadow:-16px 0 48px rgba(15,23,42,.18);display:flex;flex-direction:column}',
+      '.persona-lab-drawer-header{padding:20px 22px 16px;border-bottom:1px solid var(--pl-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+      '.persona-lab-drawer-header h2{margin:0;font-size:20px}',
+      '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
+      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{border-right:none;border-bottom:1px solid var(--pl-border)}.persona-lab-grid{grid-template-columns:1fr}}',
+    ].join('');
+    document.head.appendChild(style);
+  }
+
+  function stringifyError(error) {
+    if (!error) return 'Unknown error.';
+    if (typeof error === 'string') return error;
+    if (error.message) {
+      if (
+        /127\.0\.0\.1:3000\/admin\/persona-studio\/personas/i.test(error.message) ||
+        /failed to connect to 127\.0\.0\.1 port 3000/i.test(error.message) ||
+        /error sending request for url \(http:\/\/127\.0\.0\.1:3000/i.test(error.message)
+      ) {
+        return 'Persona Lab could not reach the ProPaasAI dev server at http://127.0.0.1:3000. Start `pnpm dev` in the ProPaasAI repo, then refresh this tab.';
+      }
+      return error.message;
+    }
+    try {
+      return JSON.stringify(error);
+    } catch (_error) {
+      return String(error);
+    }
+  }
+
+  function request(method, path, body, query) {
+    if (!window.__TAURI__ || !window.__TAURI__.core) {
+      return Promise.reject(new Error('Tauri bridge is unavailable.'));
+    }
+    return window.__TAURI__.core.invoke('first_party_ai_request', {
+      method: method,
+      path: path,
+      body: body || null,
+      query: query || null,
+    });
+  }
+
+  function replaceSessionChrome(state, title) {
+    var nextTitle = title || SESSION_LABEL;
+    var chromeKey = JSON.stringify({ title: nextTitle });
+    if (state.chromeKey === chromeKey) {
+      return;
+    }
+    state.chromeKey = chromeKey;
+    if (
+      window.__companionUtils &&
+      typeof window.__companionUtils.replaceSession === 'function'
+    ) {
+      window.__companionUtils.replaceSession(
+        state.sessionId,
+        {
+          toolName: SESSION_LABEL,
+          contentType: 'persona_lab',
+          data: { title: nextTitle },
+          meta: {
+            standalone: true,
+            headerTitle: nextTitle,
+          },
+          toolArgs: {
+            title: nextTitle,
+          },
+        },
+        { autoFocus: false }
+      );
+    }
+  }
+
+  function buildEditableForm(detail) {
+    return {
+      definition: {
+        displayName: detail.document.definition.displayName || '',
+        description: detail.document.definition.description || '',
+        owner: detail.document.definition.owner || 'platform',
+      },
+      draft: {
+        summary: detail.document.draft.summary || '',
+        description: detail.document.draft.description || '',
+        agentClass: detail.document.draft.agentClass || 'PersonaHarnessAgent',
+        rules: Array.isArray(detail.document.draft.rules)
+          ? detail.document.draft.rules.slice()
+          : [],
+        modelPolicy: {
+          defaultModel: detail.document.draft.modelPolicy.defaultModel || '',
+          fastModel: detail.document.draft.modelPolicy.fastModel || '',
+          reasoningModel: detail.document.draft.modelPolicy.reasoningModel || '',
+          workflowModels: clone(detail.document.draft.modelPolicy.workflowModels || {}),
+        },
+        toolPolicy: {
+          allowedBusinessTools: Array.isArray(detail.document.draft.toolPolicy.allowedBusinessTools)
+            ? detail.document.draft.toolPolicy.allowedBusinessTools.slice()
+            : [],
+          allowedConnectorKeys: Array.isArray(detail.document.draft.toolPolicy.allowedConnectorKeys)
+            ? detail.document.draft.toolPolicy.allowedConnectorKeys.slice()
+            : [],
+        },
+        workflowRefs: Array.isArray(detail.document.draft.workflowRefs)
+          ? detail.document.draft.workflowRefs.slice()
+          : [],
+        builtInSkills: Array.isArray(detail.document.draft.builtInSkills)
+          ? detail.document.draft.builtInSkills.slice()
+          : [],
+        sandboxPolicy: clone(detail.document.draft.sandboxPolicy || { mode: 'disabled' }),
+      },
+      prompt: detail.document.prompt || '',
+      customSkills: Array.isArray(detail.document.customSkills)
+        ? clone(detail.document.customSkills)
+        : [],
+    };
+  }
+
+  function computeFingerprint(form) {
+    return JSON.stringify(form || {});
+  }
+
+  function updateDirtyState(state) {
+    state.dirty = computeFingerprint(state.form) !== state.lastSavedFingerprint;
+  }
+
+  function setStatus(state, message) {
+    state.status = message || '';
+    if (message) {
+      state.error = '';
+    }
+  }
+
+  function setError(state, message) {
+    state.error = message || '';
+    if (message) {
+      state.status = '';
+    }
+  }
+
+  function renderJson(value) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (_error) {
+      return String(value);
+    }
+  }
+
+  function formatNumber(value) {
+    var numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) return '0';
+    return numeric.toLocaleString();
+  }
+
+  function formatDuration(value) {
+    var ms = Number(value || 0);
+    if (!Number.isFinite(ms) || ms <= 0) return '0 ms';
+    if (ms < 1000) return Math.round(ms) + ' ms';
+    if (ms < 60 * 1000) return (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + ' s';
+    return (ms / 60000).toFixed(ms >= 10 * 60000 ? 0 : 1) + ' min';
+  }
+
+  function formatStatusLabel(value) {
+    return String(value || 'draft')
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, function (char) { return char.toUpperCase(); });
+  }
+
+  function statusBadgeClass(value) {
+    return 'persona-lab-badge status-' + String(value || 'draft').toLowerCase();
+  }
+
+  function formatThreadLabel(threadId) {
+    var value = String(threadId || '');
+    if (!value) return '—';
+    if (value.length <= 18) return value;
+    return value.slice(0, 8) + '…' + value.slice(-6);
+  }
+
+  function batchPromptForRun(run) {
+    var prompt = run && run.messagePromptOverride ? String(run.messagePromptOverride).trim() : '';
+    return prompt || '';
+  }
+
+  function metricsSummaryOf(value) {
+    if (!value || typeof value !== 'object') return null;
+    if (value.metricsSummary && typeof value.metricsSummary === 'object') {
+      return value.metricsSummary;
+    }
+    return null;
+  }
+
+  function ensureArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function ensureObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }
+
+  function createEl(tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = text;
+    return el;
+  }
+
+  function bindInput(input, handler) {
+    input.addEventListener('input', handler);
+    input.addEventListener('change', handler);
+  }
+
+  function toggleListValue(list, value) {
+    return list.indexOf(value) >= 0
+      ? list.filter(function (item) { return item !== value; })
+      : list.concat([value]);
+  }
+
+  function parseWorkflowModels(raw) {
+    var trimmed = String(raw || '').trim();
+    if (!trimmed) {
+      return {};
+    }
+    var parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Workflow model overrides must be a JSON object.');
+    }
+    return parsed;
+  }
+
+  function parseJsonObject(raw, emptyValue, label) {
+    var trimmed = String(raw || '').trim();
+    if (!trimmed) {
+      return clone(emptyValue || {});
+    }
+    var parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error((label || 'JSON value') + ' must be a JSON object.');
+    }
+    return parsed;
+  }
+
+  function storage() {
+    try {
+      return window.localStorage || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function readBatchStorage() {
+    var store = storage();
+    if (!store) return {};
+    try {
+      return ensureObject(JSON.parse(store.getItem(BATCH_STORAGE_KEY) || '{}'));
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function batchStorageEntry(state) {
+    return [state.sessionId, state.selectedPersonaKey || 'none'].join('::');
+  }
+
+  function persistLastBatchId(state, batchId) {
+    var store = storage();
+    if (!store || !state.selectedPersonaKey) return;
+    var payload = readBatchStorage();
+    if (batchId) {
+      payload[batchStorageEntry(state)] = batchId;
+    } else {
+      delete payload[batchStorageEntry(state)];
+    }
+    store.setItem(BATCH_STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function restoreLastBatchId(state) {
+    if (!state.selectedPersonaKey) return null;
+    var payload = readBatchStorage();
+    return payload[batchStorageEntry(state)] || null;
+  }
+
+  function defaultBatchRun(state, index) {
+    var registries = activeRegistries(state);
+    return {
+      label: 'Run ' + (index + 1),
+      model: state.form && state.form.draft && state.form.draft.modelPolicy
+        ? state.form.draft.modelPolicy.defaultModel || ensureArray(registries.models)[0] || ''
+        : ensureArray(registries.models)[0] || '',
+      systemPromptOverride: '',
+      messagePromptOverride: '',
+      runtimeOverrides: {},
+      runtimeOverridesText: '{}',
+    };
+  }
+
+  function createBatchDraft(state, count) {
+    var runCount = Math.max(2, Math.min(8, Number(count) || 2));
+    var runs = [];
+    for (var index = 0; index < runCount; index += 1) {
+      runs.push(defaultBatchRun(state, index));
+    }
+    return {
+      runCount: runCount,
+      runs: runs,
+    };
+  }
+
+  function resetBatchWizard(state, count) {
+    state.batchWizardStep = 1;
+    state.batchDraft = createBatchDraft(state, count || (state.batchDraft && state.batchDraft.runCount) || 2);
+    state.batchError = '';
+  }
+
+  function openBatchWizard(state) {
+    resetBatchWizard(state);
+    state.batchWizardOpen = true;
+    renderState(state);
+  }
+
+  function closeBatchWizard(state) {
+    state.batchWizardOpen = false;
+    state.batchError = '';
+    renderState(state);
+  }
+
+  function synchronizeBatchDraftRuns(state) {
+    var runCount = Math.max(2, Math.min(8, Number(state.batchDraft && state.batchDraft.runCount) || 2));
+    var runs = ensureArray(state.batchDraft && state.batchDraft.runs).slice(0, runCount);
+    while (runs.length < runCount) {
+      runs.push(defaultBatchRun(state, runs.length));
+    }
+    state.batchDraft.runCount = runCount;
+    state.batchDraft.runs = runs;
+  }
+
+  function batchLaunches(payload) {
+    if (Array.isArray(payload && payload.launches)) return payload.launches;
+    if (Array.isArray(payload && payload.batch && payload.batch.launches)) return payload.batch.launches;
+    return [];
+  }
+
+  function batchRunList(payload) {
+    if (Array.isArray(payload && payload.runs)) return payload.runs;
+    if (Array.isArray(payload && payload.batch && payload.batch.runs)) return payload.batch.runs;
+    return [];
+  }
+
+  function batchRecord(payload) {
+    if (payload && payload.batch) return payload.batch;
+    return payload || null;
+  }
+
+  function clearBatchAutoOpenTimer(state) {
+    if (state.batchAutoOpenTimer) {
+      window.clearTimeout(state.batchAutoOpenTimer);
+      state.batchAutoOpenTimer = null;
+    }
+  }
+
+  function captureScrollPositions(state) {
+    if (!state.container) return;
+    var content = state.container.querySelector('.persona-lab-content');
+    if (content) {
+      state.contentScrollTop = content.scrollTop || 0;
+      state.contentScrollLeft = content.scrollLeft || 0;
+    }
+    var modal = state.container.querySelector('.persona-lab-modal');
+    if (modal) {
+      state.modalScrollTop = modal.scrollTop || 0;
+    }
+    var drawerBody = state.container.querySelector('.persona-lab-drawer-body');
+    if (drawerBody) {
+      state.drawerScrollTop = drawerBody.scrollTop || 0;
+    }
+  }
+
+  function restoreScrollPositions(state) {
+    if (!state.container || !window.requestAnimationFrame) return;
+    window.requestAnimationFrame(function () {
+      var content = state.container.querySelector('.persona-lab-content');
+      if (content) {
+        content.scrollTop = state.contentScrollTop || 0;
+        content.scrollLeft = state.contentScrollLeft || 0;
+      }
+      var modal = state.container.querySelector('.persona-lab-modal');
+      if (modal) {
+        modal.scrollTop = state.modalScrollTop || 0;
+      }
+      var drawerBody = state.container.querySelector('.persona-lab-drawer-body');
+      if (drawerBody) {
+        drawerBody.scrollTop = state.drawerScrollTop || 0;
+      }
+    });
+  }
+
+  function summarizeBatchLaunchResults(batchId, launches, results) {
+    var openedCount = 0;
+    var failed = [];
+    ensureArray(results).forEach(function (result) {
+      if (result && result.ok) {
+        openedCount += 1;
+        return;
+      }
+      if (result && result.launch) {
+        failed.push({
+          threadId: result.launch.threadId,
+          runId: result.launch.personaTestRunId || null,
+          message: stringifyError(result.error),
+        });
+      }
+    });
+    return {
+      batchId: batchId,
+      totalRuns: ensureArray(launches).length,
+      openedCount: openedCount,
+      failedCount: failed.length,
+      warnings: failed,
+    };
+  }
+
+  function activeRegistries(state) {
+    return state.registries || {
+      builtInSkills: [],
+      workflows: [],
+      models: [],
+      toolRegistry: {
+        businessTools: [],
+        connectors: [],
+        reservedCoreTools: [],
+      },
+    };
+  }
+
+  function fetchBootstrap(state) {
+    if (state.bootstrapPromise) {
+      return state.bootstrapPromise;
+    }
+    state.loading = true;
+    state.bootstrapPromise = request('GET', '/admin/persona-studio/personas')
+      .then(function (payload) {
+        state.personas = ensureArray(payload.personas);
+        state.registries = payload.registries || null;
+        state.bootstrapLoaded = true;
+        if (!state.selectedPersonaKey && state.personas.length > 0) {
+          state.selectedPersonaKey = state.personas[0].key;
+        }
+        if (state.selectedPersonaKey) {
+          return loadPersona(state, state.selectedPersonaKey);
+        }
+        return null;
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+      })
+      .finally(function () {
+        state.loading = false;
+        state.bootstrapPromise = null;
+        renderState(state);
+      });
+    return state.bootstrapPromise;
+  }
+
+  function loadPersona(state, personaKey) {
+    if (!personaKey) {
+      return Promise.resolve(null);
+    }
+    state.loadingPersona = true;
+    state.selectedPersonaKey = personaKey;
+    renderState(state);
+    state.personaPromise = request('GET', '/admin/persona-studio/personas/' + encodeURIComponent(personaKey))
+      .then(function (detail) {
+        state.current = detail;
+        state.form = buildEditableForm(detail);
+        state.lastSavedFingerprint = computeFingerprint(state.form);
+        state.dirty = false;
+        state.loadingPersona = false;
+        state.batchWizardOpen = false;
+        state.batchError = '';
+        replaceSessionChrome(state, SESSION_LABEL + ' · ' + detail.document.definition.displayName);
+        renderState(state);
+        if (state.lastRunId) {
+          fetchRun(state, state.lastRunId);
+        }
+        state.lastBatchId = restoreLastBatchId(state);
+        if (state.lastBatchId) {
+          fetchBatch(state, state.lastBatchId).catch(function () {});
+        } else {
+          stopBatchPolling(state);
+          state.batchDetails = null;
+          state.batchLaunches = [];
+          state.batchLaunchSummary = null;
+          state.submittedBatchPromptRunIds = {};
+          state.submittingBatchPromptRunIds = {};
+          renderState(state);
+        }
+        return detail;
+      })
+      .catch(function (error) {
+        state.loadingPersona = false;
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      });
+    return state.personaPromise;
+  }
+
+  function refreshBootstrapAndPersona(state, personaKey) {
+    return request('GET', '/admin/persona-studio/personas')
+      .then(function (payload) {
+        state.personas = ensureArray(payload.personas);
+        state.registries = payload.registries || state.registries;
+        state.bootstrapLoaded = true;
+        return loadPersona(state, personaKey);
+      });
+  }
+
+  function savePersona(state) {
+    if (!state.current || !state.selectedPersonaKey || !state.form) {
+      return Promise.reject(new Error('No persona is selected.'));
+    }
+    var workflowModels;
+    try {
+      workflowModels = parseWorkflowModels(renderJson(state.form.draft.modelPolicy.workflowModels));
+    } catch (error) {
+      setError(state, stringifyError(error));
+      renderState(state);
+      return Promise.reject(error);
+    }
+
+    state.saving = true;
+    setStatus(state, 'Saving persona draft to disk...');
+    renderState(state);
+
+    var payload = clone(state.form);
+    payload.draft.modelPolicy.workflowModels = workflowModels;
+
+    return request(
+      'PUT',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey),
+      payload
+    )
+      .then(function (validation) {
+        state.current = Object.assign({}, state.current || {}, { validation: validation });
+        return loadPersona(state, state.selectedPersonaKey);
+      })
+      .then(function () {
+        setStatus(state, 'Saved to disk.');
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        throw error;
+      })
+      .finally(function () {
+        state.saving = false;
+        renderState(state);
+      });
+  }
+
+  function waitForThread(threadId, attempts) {
+    attempts = attempts || 24;
+    return new Promise(function (resolve, reject) {
+      function tick(remaining) {
+        var aiState = window.__tribexAiState;
+        if (aiState && typeof aiState.getThread === 'function') {
+          var thread = aiState.getThread(threadId);
+          if (thread) {
+            resolve(thread);
+            return;
+          }
+        }
+        if (remaining <= 0) {
+          reject(new Error('Timed out waiting for the Persona Lab thread to appear in MCPViews.'));
+          return;
+        }
+        var refreshPromise =
+          aiState && typeof aiState.refreshNavigator === 'function'
+            ? aiState.refreshNavigator(true)
+            : Promise.resolve();
+        Promise.resolve(refreshPromise)
+          .catch(function () {})
+          .finally(function () {
+            window.setTimeout(function () {
+              tick(remaining - 1);
+            }, 900);
+          });
+      }
+      tick(attempts);
+    });
+  }
+
+  function primeThreadDraft(threadId, prompt) {
+    if (
+      !threadId ||
+      !prompt ||
+      !window.__tribexAiState ||
+      typeof window.__tribexAiState.getThread !== 'function' ||
+      typeof window.__tribexAiState.setThreadDraft !== 'function'
+    ) {
+      return;
+    }
+    if (!window.__tribexAiState.getThread(threadId)) {
+      return;
+    }
+    window.__tribexAiState.setThreadDraft(threadId, prompt);
+  }
+
+  function openThreadInNativeAi(threadId, organizationId, prompt) {
+    if (!window.__tribexAiClient || !window.__tribexAiState) {
+      return Promise.reject(new Error('The native AI UI is not available in this MCPViews session.'));
+    }
+
+    var aiState = window.__tribexAiState;
+    var organizationPromise;
+    if (
+      organizationId &&
+      typeof aiState.selectOrganization === 'function' &&
+      typeof aiState.getSnapshot === 'function' &&
+      (!aiState.getSnapshot().selectedOrganization || aiState.getSnapshot().selectedOrganization.id !== organizationId)
+    ) {
+      organizationPromise = aiState.selectOrganization(organizationId);
+    } else if (typeof aiState.refreshNavigator === 'function') {
+      organizationPromise = aiState.refreshNavigator(true);
+    } else {
+      organizationPromise = Promise.resolve();
+    }
+
+    return Promise.resolve(organizationPromise)
+      .then(function () {
+        return waitForThread(threadId, 24);
+      })
+      .then(function () {
+        aiState.openThread(threadId, { connectStream: false });
+        primeThreadDraft(threadId, prompt);
+      });
+  }
+
+  function openTestThread(state, launch) {
+    if (!window.__tribexAiClient || !window.__tribexAiState) {
+      return Promise.reject(new Error('The native AI UI is not available in this MCPViews session.'));
+    }
+
+    if (typeof window.__tribexAiClient.configureThreadRuntime === 'function') {
+      window.__tribexAiClient.configureThreadRuntime(launch.threadId, {
+        runtimeSessionBody: launch.runtimeSessionBody || null,
+        personaOverride: launch.personaOverride || null,
+        personaTestRunId: launch.personaTestRunId || null,
+        telemetryToken: launch.telemetryToken || null,
+      });
+    }
+    return openThreadInNativeAi(
+      launch.threadId,
+      launch.organizationId,
+      batchPromptForRun(findBatchRunById(state, launch.personaTestRunId))
+    ).then(function (sessionId) {
+      return ensureBatchPromptSubmitted(state, launch).then(function () {
+        return sessionId;
+      });
+    });
+  }
+
+  function requestRunDetails(runId) {
+    if (!runId) {
+      return Promise.resolve(null);
+    }
+    return request('GET', '/admin/persona-studio/test-runs/' + encodeURIComponent(runId));
+  }
+
+  function fetchRun(state, runId) {
+    return requestRunDetails(runId)
+      .then(function (payload) {
+        state.lastRunId = runId;
+        state.runDetails = payload;
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function closeRunDetail(state) {
+    state.runDetailOpen = false;
+    state.runDetailLoading = false;
+    state.runDetailError = '';
+    state.runDetailRunId = null;
+    state.runDetailPayload = null;
+    renderState(state);
+  }
+
+  function openRunDetail(state, runId) {
+    if (!runId) return Promise.resolve(null);
+    state.runDetailOpen = true;
+    state.runDetailLoading = true;
+    state.runDetailError = '';
+    state.runDetailRunId = runId;
+    renderState(state);
+    return requestRunDetails(runId)
+      .then(function (payload) {
+        state.runDetailPayload = payload;
+        state.runDetailLoading = false;
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        state.runDetailLoading = false;
+        state.runDetailError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function fetchBatch(state, batchId) {
+    if (!batchId) {
+      return Promise.resolve(null);
+    }
+    return request('GET', '/admin/persona-studio/test-batches/' + encodeURIComponent(batchId))
+      .then(function (payload) {
+        state.lastBatchId = batchId;
+        state.batchDetails = payload;
+        persistLastBatchId(state, batchId);
+        ensureArray(batchRunList(payload)).forEach(function (run) {
+          primeThreadDraft(run.threadId, batchPromptForRun(run));
+        });
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function findBatchLaunch(state, run) {
+    return ensureArray(state.batchLaunches).find(function (launch) {
+      return (
+        (run.id && launch.personaTestRunId === run.id) ||
+        (run.runId && launch.personaTestRunId === run.runId) ||
+        (run.threadId && launch.threadId === run.threadId)
+      );
+    }) || null;
+  }
+
+  function findBatchRunById(state, runId) {
+    return ensureArray(batchRunList(state.batchDetails)).find(function (run) {
+      return run && (run.id === runId || run.runId === runId);
+    }) || null;
+  }
+
+  function retryBatchAutoOpen(state, launches, attemptsLeft) {
+    clearBatchAutoOpenTimer(state);
+    if (!attemptsLeft || !ensureArray(launches).length) {
+      return;
+    }
+    state.batchAutoOpenTimer = window.setTimeout(function () {
+      Promise.all(ensureArray(launches).map(function (launch) {
+        return openTestThread(state, launch)
+          .then(function () { return null; })
+          .catch(function () { return launch; });
+      })).then(function (failedLaunches) {
+        var remaining = failedLaunches.filter(Boolean);
+        if (remaining.length) {
+          retryBatchAutoOpen(state, remaining, attemptsLeft - 1);
+        } else {
+          clearBatchAutoOpenTimer(state);
+        }
+      });
+    }, 2000);
+  }
+
+  function ensureBatchPromptSubmitted(state, launch) {
+    var runId = launch && launch.personaTestRunId ? launch.personaTestRunId : null;
+    var run = runId ? findBatchRunById(state, runId) : null;
+    var prompt = batchPromptForRun(run);
+    if (!runId || !prompt) {
+      return Promise.resolve(false);
+    }
+    if (
+      state.submittedBatchPromptRunIds[runId] ||
+      state.submittingBatchPromptRunIds[runId] ||
+      !window.__tribexAiState ||
+      typeof window.__tribexAiState.submitPrompt !== 'function'
+    ) {
+      return Promise.resolve(false);
+    }
+
+    state.submittingBatchPromptRunIds[runId] = true;
+    return window.__tribexAiState.submitPrompt(launch.threadId, prompt)
+      .then(function (submitted) {
+        if (submitted) {
+          state.submittedBatchPromptRunIds[runId] = true;
+        }
+        return submitted;
+      })
+      .finally(function () {
+        delete state.submittingBatchPromptRunIds[runId];
+      });
+  }
+
+  function openBatchRunThread(state, run) {
+    var launch = findBatchLaunch(state, run);
+    var openPromise = launch
+      ? openTestThread(state, launch)
+      : openThreadInNativeAi(run.threadId, run.organizationId || null, batchPromptForRun(run));
+    return openPromise
+      .then(function () {
+        setStatus(state, 'Opened chat for ' + (run.label || run.id || 'this run') + '.');
+        renderState(state);
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function stopPolling(state) {
+    if (state.pollTimer) {
+      window.clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
+  }
+
+  function stopBatchPolling(state) {
+    if (state.batchPollTimer) {
+      window.clearInterval(state.batchPollTimer);
+      state.batchPollTimer = null;
+    }
+    clearBatchAutoOpenTimer(state);
+  }
+
+  function startPolling(state, runId) {
+    stopPolling(state);
+    if (!runId) return;
+    state.pollTimer = window.setInterval(function () {
+      fetchRun(state, runId)
+        .then(function (payload) {
+          var status = payload && payload.run ? payload.run.status : null;
+          if (status && TERMINAL_RUN_STATUSES[status]) {
+            stopPolling(state);
+          }
+        })
+        .catch(function () {});
+    }, 2000);
+  }
+
+  function startBatchPolling(state, batchId) {
+    stopBatchPolling(state);
+    if (!batchId) return;
+    state.batchPollTimer = window.setInterval(function () {
+      fetchBatch(state, batchId)
+        .then(function (payload) {
+          var batch = batchRecord(payload);
+          var status = batch && batch.status;
+          if (status && TERMINAL_BATCH_STATUSES[status]) {
+            stopBatchPolling(state);
+          }
+        })
+        .catch(function () {});
+    }, 2500);
+  }
+
+  function testPersona(state) {
+    if (!state.selectedPersonaKey) {
+      setError(state, 'Select a persona before running a test.');
+      renderState(state);
+      return Promise.reject(new Error('No persona selected.'));
+    }
+
+    state.testing = true;
+    setStatus(state, state.dirty ? 'Saving draft before launching test...' : 'Launching Persona Lab test...');
+    renderState(state);
+
+    var savePromise = state.dirty ? savePersona(state) : Promise.resolve();
+    return Promise.resolve(savePromise)
+      .then(function () {
+        return request(
+          'POST',
+          '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-runs',
+          { sourceStage: 'draft' }
+        );
+      })
+      .then(function (payload) {
+        state.lastRunId = payload.run.id;
+        setStatus(state, 'Opening native AI chat tab...');
+        renderState(state);
+        startPolling(state, payload.run.id);
+        return Promise.all([
+          fetchRun(state, payload.run.id),
+          openTestThread(state, payload.launch),
+        ]);
+      })
+      .then(function () {
+        setStatus(state, 'Test tab opened. Message the persona in the native AI chat to validate the saved draft.');
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        throw error;
+      })
+      .finally(function () {
+        state.testing = false;
+        renderState(state);
+      });
+  }
+
+  function buildBatchPayload(state) {
+    synchronizeBatchDraftRuns(state);
+    var draft = state.batchDraft;
+    var runs = ensureArray(draft && draft.runs).map(function (run, index) {
+      var runtimeOverrides = parseJsonObject(
+        run.runtimeOverridesText || renderJson(ensureObject(run.runtimeOverrides)),
+        {},
+        'Runtime overrides for run ' + (index + 1)
+      );
+      if (!run.model) {
+        throw new Error('Every batch run must select a model before launch.');
+      }
+      return {
+        label: String(run.label || ('Run ' + (index + 1))).trim(),
+        model: run.model,
+        systemPromptOverride: run.systemPromptOverride || '',
+        messagePromptOverride: run.messagePromptOverride || '',
+        runtimeOverrides: runtimeOverrides,
+      };
+    });
+
+    return {
+      sourceStage: 'draft',
+      runCount: draft.runCount,
+      summaryScaffold: {
+        enabled: true,
+        mode: 'manual',
+        transcriptSource: 'full',
+      },
+      runs: runs,
+    };
+  }
+
+  function launchBatch(state) {
+    if (!state.selectedPersonaKey) {
+      setError(state, 'Select a persona before launching a parallel evaluation.');
+      renderState(state);
+      return Promise.reject(new Error('No persona selected.'));
+    }
+
+    var payload;
+    try {
+      payload = buildBatchPayload(state);
+      state.batchError = '';
+    } catch (error) {
+      state.batchError = stringifyError(error);
+      renderState(state);
+      return Promise.reject(error);
+    }
+
+    state.launchingBatch = true;
+    setStatus(
+      state,
+      state.dirty
+        ? 'Saving draft before launching parallel evaluation...'
+        : 'Launching parallel evaluation...'
+    );
+    renderState(state);
+
+    var savePromise = state.dirty ? savePersona(state) : Promise.resolve();
+    return Promise.resolve(savePromise)
+      .then(function () {
+        return request(
+          'POST',
+          '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-batches',
+          payload
+        );
+      })
+      .then(function (response) {
+        var batch = batchRecord(response);
+        var launches = batchLaunches(response);
+        if (!batch || !batch.id) {
+          throw new Error('Parallel evaluation launch did not return a batch record.');
+        }
+        state.lastBatchId = batch.id;
+        state.batchDetails = response;
+        state.batchLaunches = launches.slice();
+        state.batchLaunchSummary = {
+          batchId: batch.id,
+          totalRuns: launches.length,
+          openedCount: 0,
+          failedCount: 0,
+          warnings: [],
+        };
+        persistLastBatchId(state, batch.id);
+        state.batchWizardOpen = false;
+        setStatus(
+          state,
+          'Parallel evaluation created. Opening ' +
+            launches.length +
+            ' chat' +
+            (launches.length === 1 ? '' : 's') +
+            ' and updating Parallel Evaluations below...'
+        );
+        renderState(state);
+        startBatchPolling(state, batch.id);
+        return Promise.all([
+          fetchBatch(state, batch.id).catch(function () { return null; }),
+          Promise.all(launches.map(function (launch) {
+            return openTestThread(state, launch)
+              .then(function () {
+                return { ok: true, launch: launch };
+              })
+              .catch(function (error) {
+                return { ok: false, launch: launch, error: error };
+              });
+          })),
+        ]);
+      })
+      .then(function (results) {
+        var launchResults = results[1];
+        var summary = summarizeBatchLaunchResults(state.lastBatchId, state.batchLaunches, launchResults);
+        state.batchLaunchSummary = summary;
+        if (summary.failedCount) {
+          retryBatchAutoOpen(
+            state,
+            summary.warnings.map(function (warning) {
+              return ensureArray(state.batchLaunches).find(function (launch) {
+                return launch.threadId === warning.threadId;
+              });
+            }).filter(Boolean),
+            3
+          );
+          setStatus(
+            state,
+            'Parallel evaluation created. ' +
+              summary.openedCount +
+              ' of ' +
+              summary.totalRuns +
+              ' chats opened automatically. Use Open chat in Parallel Evaluations below for any run that did not appear.'
+          );
+        } else {
+          setStatus(
+            state,
+            'Parallel evaluation launched. ' +
+              summary.totalRuns +
+              ' chats opened, and the batch is now available below in Parallel Evaluations.'
+          );
+        }
+      })
+      .catch(function (error) {
+        state.batchError = stringifyError(error);
+        setError(state, stringifyError(error));
+        throw error;
+      })
+      .finally(function () {
+        state.launchingBatch = false;
+        renderState(state);
+      });
+  }
+
+  function maybeSwitchPersona(state, nextKey) {
+    if (!nextKey || nextKey === state.selectedPersonaKey) {
+      return;
+    }
+    if (
+      state.dirty &&
+      !window.confirm('You have unsaved persona changes. Discard them and switch personas?')
+    ) {
+      return;
+    }
+    setStatus(state, '');
+    setError(state, '');
+    stopPolling(state);
+    stopBatchPolling(state);
+    closeRunDetail(state);
+    state.lastRunId = null;
+    state.runDetails = null;
+    state.lastBatchId = null;
+    state.batchDetails = null;
+    state.batchLaunches = [];
+    state.batchLaunchSummary = null;
+    state.submittedBatchPromptRunIds = {};
+    state.submittingBatchPromptRunIds = {};
+    loadPersona(state, nextKey);
+  }
+
+  function createPersona(state) {
+    var key = window.prompt('New persona key', '');
+    if (!key) return;
+    var displayName = window.prompt('Display name', key);
+    if (!displayName) return;
+    var description = window.prompt('Description', displayName + ' persona draft created from Persona Lab.') || '';
+
+    request('POST', '/admin/persona-studio/personas', {
+      key: key,
+      displayName: displayName,
+      description: description,
+    })
+      .then(function (payload) {
+        setStatus(state, 'Created new persona draft.');
+        return refreshBootstrapAndPersona(state, payload.definition.key);
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+      });
+  }
+
+  function renderFieldGroup(parent, label, input) {
+    var field = createEl('div', 'persona-lab-field');
+    var labelEl = createEl('label', null, label);
+    field.appendChild(labelEl);
+    field.appendChild(input);
+    parent.appendChild(field);
+    return field;
+  }
+
+  function buildCheckboxGrid(items, selected, onToggle) {
+    var grid = createEl('div', 'persona-lab-choice-grid');
+    ensureArray(items).forEach(function (item) {
+      var key = typeof item === 'string' ? item : item.key;
+      var label = typeof item === 'string' ? item : item.label;
+      var row = createEl('label', 'persona-lab-choice');
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = selected.indexOf(key) >= 0;
+      input.addEventListener('change', function () {
+        onToggle(key);
+      });
+      row.appendChild(input);
+      var copy = createEl('div');
+      copy.appendChild(createEl('strong', null, label));
+      copy.appendChild(createEl('code', null, key));
+      row.appendChild(copy);
+      grid.appendChild(row);
+    });
+    return grid;
+  }
+
+  function buildModelSelect(registries, selectedValue, onChange, allowEmpty) {
+    var select = createEl('select', 'persona-lab-select');
+    if (allowEmpty !== false) {
+      var emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = 'None';
+      select.appendChild(emptyOption);
+    }
+    ensureArray(registries.models).forEach(function (model) {
+      var option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      if (model === selectedValue) option.selected = true;
+      select.appendChild(option);
+    });
+    bindInput(select, function () {
+      onChange(select.value);
+    });
+    return select;
+  }
+
+  function buildNav(state) {
+    var nav = createEl('aside', 'persona-lab-nav');
+    var header = createEl('div', 'persona-lab-nav-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Personas'));
+    copy.appendChild(createEl('strong', null, 'Navigator'));
+    header.appendChild(copy);
+    var createButton = createEl('button', 'persona-lab-button', 'New');
+    createButton.type = 'button';
+    createButton.addEventListener('click', function () {
+      createPersona(state);
+    });
+    header.appendChild(createButton);
+    nav.appendChild(header);
+
+    var list = createEl('div', 'persona-lab-nav-list');
+    if (!state.personas.length) {
+      list.appendChild(createEl('div', 'persona-lab-empty', 'No persona drafts found yet.'));
+    } else {
+      state.personas.forEach(function (persona) {
+        var item = createEl(
+          'button',
+          'persona-lab-nav-item' + (persona.key === state.selectedPersonaKey ? ' active' : '')
+        );
+        item.type = 'button';
+        item.addEventListener('click', function () {
+          maybeSwitchPersona(state, persona.key);
+        });
+        var title = createEl('div', 'persona-lab-nav-item-title');
+        title.appendChild(createEl('span', null, persona.displayName));
+        if (persona.key === state.selectedPersonaKey && state.dirty) {
+          title.appendChild(createEl('span', 'persona-lab-badge dirty', 'Unsaved'));
+        }
+        item.appendChild(title);
+        item.appendChild(createEl('code', null, persona.key));
+        var meta = createEl('div', 'persona-lab-nav-item-meta');
+        meta.appendChild(createEl('span', 'persona-lab-badge', persona.hasDraft ? 'draft' : 'no-draft'));
+        if (persona.betaReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'beta'));
+        if (persona.deployedReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'deployed'));
+        item.appendChild(meta);
+        list.appendChild(item);
+      });
+    }
+    nav.appendChild(list);
+    return nav;
+  }
+
+  function renderInspectorPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h2', null, 'Draft Validation'));
+    if (!state.current || !state.current.validation) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Validation data will appear here once a persona is loaded.'));
+      return panel;
+    }
+
+    if (state.current.validation.ok) {
+      panel.appendChild(createEl('p', null, 'The saved draft currently validates successfully.'));
+    } else {
+      panel.appendChild(createEl('p', null, 'The current draft has validation errors that need attention before promotion.'));
+      var list = createEl('ul', 'persona-lab-list');
+      ensureArray(state.current.validation.errors).forEach(function (error) {
+        list.appendChild(createEl('li', null, error));
+      });
+      panel.appendChild(list);
+    }
+
+    var compiledTitle = createEl('h3', null, 'Compiled Persona Payload');
+    panel.appendChild(compiledTitle);
+    panel.appendChild(createEl('pre', 'persona-lab-json', renderJson(state.current.validation.compiled)));
+    return panel;
+  }
+
+  function renderMetricsSummaryPanel(title, metricsSummary) {
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h3', null, title));
+    if (!metricsSummary || !metricsSummary.totals) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Metrics will appear after assistant turns are recorded for this run.'));
+      return panel;
+    }
+
+    var totals = metricsSummary.totals;
+    var grid = createEl('div', 'persona-lab-metric-grid');
+    [
+      ['Total run time', formatDuration(totals.totalRunTimeMs)],
+      ['Thinking time', formatDuration(totals.thinkingTimeMs)],
+      ['Turns', formatNumber(totals.assistantTurnCount)],
+      ['Avg time per turn', formatDuration(totals.avgTimePerTurnMs)],
+      ['Tool calls', formatNumber(totals.toolCallCount)],
+      ['Total tokens', formatNumber(totals.tokenUsage && totals.tokenUsage.totalTokens)],
+      ['Prompt tokens', formatNumber(totals.tokenUsage && totals.tokenUsage.promptTokens)],
+      ['Completion tokens', formatNumber(totals.tokenUsage && totals.tokenUsage.completionTokens)],
+    ].forEach(function (entry) {
+      var card = createEl('div', 'persona-lab-metric-card');
+      card.appendChild(createEl('span', null, entry[0]));
+      card.appendChild(createEl('strong', null, entry[1]));
+      grid.appendChild(card);
+    });
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function renderComparisonPanel(metricsSummary) {
+    var comparison = metricsSummary && metricsSummary.comparison;
+    if (!comparison || !Object.keys(comparison).length) {
+      return null;
+    }
+
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h3', null, 'Batch Comparison'));
+    var list = createEl('div', 'persona-lab-comparison-list');
+    [
+      ['totalRunTimeMs', 'Total run time'],
+      ['thinkingTimeMs', 'Thinking time'],
+      ['assistantTurnCount', 'Turn count'],
+      ['avgTimePerTurnMs', 'Avg time per turn'],
+      ['toolCallCount', 'Tool calls'],
+      ['totalTokens', 'Total tokens'],
+    ].forEach(function (entry) {
+      var detail = comparison[entry[0]];
+      if (!detail) return;
+      var item = createEl('div', 'persona-lab-comparison-item');
+      var copy = createEl('div');
+      copy.appendChild(createEl('strong', null, entry[1]));
+      copy.appendChild(
+        createEl(
+          'div',
+          'persona-lab-helper',
+          (detail.isBest ? 'Best in batch' : 'Rank ' + detail.rank + ' in batch') +
+            ' • delta ' +
+            formatNumber(detail.deltaFromBest)
+        )
+      );
+      item.appendChild(copy);
+      item.appendChild(createEl('span', 'persona-lab-badge', detail.direction));
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function renderTurnBreakdownPanel(metricsSummary) {
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h3', null, 'Per-Turn Breakdown'));
+    var turns = ensureArray(metricsSummary && metricsSummary.turns);
+    if (!turns.length) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'No assistant turns have been recorded for this run yet.'));
+      return panel;
+    }
+
+    var list = createEl('div', 'persona-lab-turn-list');
+    turns.forEach(function (turn) {
+      var card = createEl('div', 'persona-lab-turn-card');
+      card.appendChild(createEl('h4', null, 'Turn ' + String(turn.turnIndex || '—')));
+      var kv = createEl('div', 'persona-lab-kv');
+      [
+        ['Execution run', turn.executionRunId || '—'],
+        ['Started', turn.startedAt || '—'],
+        ['Finished', turn.finishedAt || '—'],
+        ['Duration', formatDuration(turn.durationMs)],
+        ['Tool calls', formatNumber(turn.toolCallCount)],
+        ['Total tokens', formatNumber(turn.tokenUsage && turn.tokenUsage.totalTokens)],
+      ].forEach(function (entry) {
+        var item = createEl('div', 'persona-lab-kv-item');
+        item.appendChild(createEl('span', null, entry[0]));
+        item.appendChild(createEl('strong', null, entry[1]));
+        kv.appendChild(item);
+      });
+      card.appendChild(kv);
+      list.appendChild(card);
+    });
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function renderLatestRunPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h2', null, 'Latest Test Run'));
+    if (!state.runDetails || !state.runDetails.run) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'No Persona Lab test run has been launched from this tab yet.'));
+      return panel;
+    }
+
+    var run = state.runDetails.run;
+    var metricsSummary = metricsSummaryOf(run) || metricsSummaryOf(state.runDetails.diagnostics);
+    var summary = createEl('div', 'persona-lab-kv');
+    [
+      ['Run ID', run.id],
+      ['Status', run.status],
+      ['Thread', run.threadId],
+      ['Started', run.startedAt],
+      ['Finished', run.finishedAt || 'In progress'],
+    ].forEach(function (entry) {
+      var card = createEl('div', 'persona-lab-kv-item');
+      card.appendChild(createEl('span', null, entry[0]));
+      card.appendChild(createEl('strong', null, String(entry[1] || '—')));
+      summary.appendChild(card);
+    });
+    panel.appendChild(summary);
+    panel.appendChild(renderMetricsSummaryPanel('Run Metrics', metricsSummary));
+
+    var actions = createEl('div', 'persona-lab-run-actions');
+    actions.appendChild(createEl('div', 'persona-lab-helper', 'Open the detailed run view for per-turn metrics and raw diagnostics.'));
+    var detailButton = createEl('button', 'persona-lab-button', 'View run');
+    detailButton.type = 'button';
+    detailButton.addEventListener('click', function () {
+      openRunDetail(state, run.id).catch(function () {});
+    });
+    actions.appendChild(detailButton);
+    panel.appendChild(actions);
+
+    if (state.runDetails.diagnostics && state.runDetails.diagnostics.latestExecutionRun) {
+      panel.appendChild(createEl('h3', null, 'Billing + Execution Snapshot'));
+      panel.appendChild(
+        createEl(
+          'pre',
+          'persona-lab-json',
+          renderJson(state.runDetails.diagnostics.latestExecutionRun)
+        )
+      );
+    }
+
+    panel.appendChild(createEl('h3', null, 'Raw Companion Payloads'));
+    panel.appendChild(
+      createEl(
+        'pre',
+        'persona-lab-json',
+        renderJson((state.runDetails.diagnostics && state.runDetails.diagnostics.companionEvents) || [])
+      )
+    );
+    return panel;
+  }
+
+  function renderBatchLaunchSummary(state, batch) {
+    if (!state.batchLaunchSummary || state.batchLaunchSummary.batchId !== batch.id) {
+      return null;
+    }
+
+    var summary = state.batchLaunchSummary;
+    var banner = createEl(
+      'div',
+      'persona-lab-summary-banner ' + (summary.failedCount ? 'warning' : 'success')
+    );
+    var copy = createEl('div');
+    copy.appendChild(
+      createEl(
+        'strong',
+        null,
+        summary.failedCount ? 'Batch created with chat-open warnings' : 'Batch created successfully'
+      )
+    );
+    copy.appendChild(
+      createEl(
+        'p',
+        null,
+        summary.failedCount
+          ? summary.openedCount +
+              ' of ' +
+              summary.totalRuns +
+              ' chats opened automatically. You can still use the run cards below to open any missing chat.'
+          : summary.totalRuns +
+              ' chats opened automatically. You can revisit any run from the cards below.'
+      )
+    );
+    banner.appendChild(copy);
+    var actions = createEl('div', 'persona-lab-actions');
+    if (ensureArray(state.batchLaunches).length) {
+      var reopenButton = createEl('button', 'persona-lab-button', 'Open all chats');
+      reopenButton.type = 'button';
+      reopenButton.addEventListener('click', function () {
+        Promise.all(ensureArray(state.batchLaunches).map(function (launch) {
+          return openTestThread(state, launch).catch(function () { return null; });
+        })).then(function () {
+          setStatus(state, 'Retried opening all chats for this batch.');
+          renderState(state);
+        });
+      });
+      actions.appendChild(reopenButton);
+    }
+    var refreshButton = createEl('button', 'persona-lab-button', 'Refresh batch');
+    refreshButton.type = 'button';
+    refreshButton.addEventListener('click', function () {
+      fetchBatch(state, batch.id).catch(function () {});
+    });
+    actions.appendChild(refreshButton);
+    banner.appendChild(actions);
+    return banner;
+  }
+
+  function renderBatchRunSummary(state, run, index) {
+    var card = createEl('div', 'persona-lab-run-card');
+    var metricsSummary = metricsSummaryOf(run);
+    var header = createEl('div', 'persona-lab-run-card-header');
+    var headerCopy = createEl('div');
+    headerCopy.appendChild(createEl('div', 'persona-lab-run-eyebrow', 'Batch run ' + (index + 1)));
+    headerCopy.appendChild(createEl('strong', null, run.label || ('Run ' + (index + 1))));
+    var subtitle = createEl('div', 'persona-lab-run-subtitle');
+    var modelChip = createEl('div', 'persona-lab-chip');
+    modelChip.appendChild(createEl('span', 'persona-lab-chip-label', 'Model'));
+    modelChip.appendChild(createEl('span', null, run.model || 'No model'));
+    subtitle.appendChild(modelChip);
+    if (run.threadId) {
+      var threadChip = createEl('div', 'persona-lab-chip');
+      threadChip.appendChild(createEl('span', 'persona-lab-chip-label', 'Thread'));
+      threadChip.appendChild(createEl('span', null, formatThreadLabel(run.threadId)));
+      subtitle.appendChild(threadChip);
+    }
+    headerCopy.appendChild(subtitle);
+    header.appendChild(headerCopy);
+    header.appendChild(createEl('span', statusBadgeClass(run.status), formatStatusLabel(run.status)));
+    card.appendChild(header);
+
+    var kv = createEl('div', 'persona-lab-kv');
+    [
+      ['Run ID', run.id || run.runId || '—'],
+      ['Thread', run.threadId || '—'],
+      ['System prompt', run.systemPromptOverride ? 'override' : 'inherits persona'],
+      ['Message prompt', run.messagePromptOverride ? 'override' : 'launch-time prompt'],
+    ].forEach(function (entry) {
+      var item = createEl('div', 'persona-lab-kv-item');
+      item.appendChild(createEl('span', null, entry[0]));
+      item.appendChild(createEl('strong', null, String(entry[1] || '—')));
+      kv.appendChild(item);
+    });
+    card.appendChild(kv);
+
+    if (metricsSummary && metricsSummary.totals) {
+      var metricGrid = createEl('div', 'persona-lab-run-metric-grid');
+      [
+        ['Run time', formatDuration(metricsSummary.totals.totalRunTimeMs)],
+        ['Thinking', formatDuration(metricsSummary.totals.thinkingTimeMs)],
+        ['Turns', formatNumber(metricsSummary.totals.assistantTurnCount)],
+        ['Per turn', formatDuration(metricsSummary.totals.avgTimePerTurnMs)],
+        ['Tools', formatNumber(metricsSummary.totals.toolCallCount)],
+        ['Tokens', formatNumber(metricsSummary.totals.tokenUsage && metricsSummary.totals.tokenUsage.totalTokens)],
+      ].forEach(function (entry) {
+        var metricCard = createEl('div', 'persona-lab-run-metric');
+        metricCard.appendChild(createEl('span', null, entry[0]));
+        metricCard.appendChild(createEl('strong', null, entry[1]));
+        metricGrid.appendChild(metricCard);
+      });
+      card.appendChild(metricGrid);
+    }
+
+    if (run.systemPromptOverride) {
+      card.appendChild(createEl('div', 'persona-lab-run-note', 'System prompt override is set for this run.'));
+    }
+    if (run.messagePromptOverride) {
+      card.appendChild(createEl('div', 'persona-lab-run-note', 'Launch-time message prompt override is set for this run.'));
+    }
+    var actions = createEl('div', 'persona-lab-run-actions');
+    var comparisonDetail = metricsSummary && metricsSummary.comparison && metricsSummary.comparison.totalRunTimeMs;
+    var actionCopy = createEl('div', 'persona-lab-run-actions-copy');
+    actionCopy.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        comparisonDetail
+          ? (comparisonDetail.isBest ? 'Best run time in batch.' : 'Run time rank ' + comparisonDetail.rank + ' in batch.')
+          : 'Per-run metrics will update as assistant turns complete.'
+      )
+    );
+    actionCopy.appendChild(
+      createEl(
+        'div',
+        'persona-lab-run-note',
+        run.threadId
+          ? (batchPromptForRun(run)
+              ? 'Open the native AI chat to review or send the prefilled prompt for this run.'
+              : 'Open the native AI chat, then send the first evaluation prompt to begin collecting metrics.')
+          : 'Telemetry is available from the detailed run view.'
+      )
+    );
+    actions.appendChild(actionCopy);
+    var buttonGroup = createEl('div', 'persona-lab-run-actions-buttons');
+    if (run.threadId) {
+      var openChatButton = createEl('button', 'persona-lab-button', 'Open chat');
+      openChatButton.type = 'button';
+      openChatButton.addEventListener('click', function () {
+        openBatchRunThread(state, run).catch(function () {});
+      });
+      buttonGroup.appendChild(openChatButton);
+    }
+    var viewButton = createEl('button', 'persona-lab-button', 'View run');
+    viewButton.type = 'button';
+    viewButton.addEventListener('click', function () {
+      openRunDetail(state, run.id || run.runId).catch(function () {});
+    });
+    buttonGroup.appendChild(viewButton);
+    actions.appendChild(buttonGroup);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderLatestBatchPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h2', null, 'Parallel Evaluations'));
+
+    if (!state.batchDetails || !batchRecord(state.batchDetails)) {
+      panel.appendChild(
+        createEl(
+          'div',
+          'persona-lab-empty',
+          'No parallel evaluation batch has been launched for this persona in Persona Lab yet.'
+        )
+      );
+      return panel;
+    }
+
+    var batch = batchRecord(state.batchDetails);
+    var summary = createEl('div', 'persona-lab-kv');
+    [
+      ['Batch ID', batch.id],
+      ['Status', batch.status],
+      ['Run count', batch.runCount || batchRunList(state.batchDetails).length],
+      ['Started', batch.startedAt || batch.createdAt || '—'],
+      ['Finished', batch.finishedAt || 'In progress'],
+    ].forEach(function (entry) {
+      var card = createEl('div', 'persona-lab-kv-item');
+      card.appendChild(createEl('span', null, entry[0]));
+      card.appendChild(createEl('strong', null, String(entry[1] || '—')));
+      summary.appendChild(card);
+    });
+    panel.appendChild(summary);
+    var launchSummary = renderBatchLaunchSummary(state, batch);
+    if (launchSummary) {
+      panel.appendChild(launchSummary);
+    }
+
+    var runs = batchRunList(state.batchDetails);
+    var eligibleForSummary = runs.some(function (run) {
+      return TERMINAL_RUN_STATUSES[run.status];
+    }) || TERMINAL_BATCH_STATUSES[batch.status];
+    if (eligibleForSummary) {
+      var summaryBanner = createEl('div', 'persona-lab-summary-banner');
+      var summaryCopy = createEl('div');
+      summaryCopy.appendChild(createEl('strong', null, 'Batch synthesis scaffold'));
+      summaryCopy.appendChild(
+        createEl(
+          'p',
+          null,
+          'Full transcript and config metadata are persisted so this batch can feed a future comparison summary run.'
+        )
+      );
+      summaryBanner.appendChild(summaryCopy);
+      var summaryButton = createEl('button', 'persona-lab-button', 'Summarize Batch');
+      summaryButton.type = 'button';
+      summaryButton.disabled = true;
+      summaryBanner.appendChild(summaryButton);
+      panel.appendChild(summaryBanner);
+    }
+
+    if (!runs.length) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Run definitions will appear here after launch.'));
+      return panel;
+    }
+
+    panel.appendChild(createEl('h3', null, 'Batch Runs'));
+    var grid = createEl('div', 'persona-lab-run-grid');
+    runs.forEach(function (run, index) {
+      grid.appendChild(renderBatchRunSummary(state, run, index));
+    });
+    panel.appendChild(grid);
+
+    if (state.batchDetails.diagnostics || batch.diagnostics) {
+      panel.appendChild(createEl('h3', null, 'Batch Diagnostics'));
+      panel.appendChild(
+        createEl(
+          'pre',
+          'persona-lab-json',
+          renderJson(state.batchDetails.diagnostics || batch.diagnostics || {})
+        )
+      );
+    }
+    return panel;
+  }
+
+  function renderBatchWizard(state) {
+    if (!state.batchWizardOpen || !state.batchDraft) {
+      return null;
+    }
+
+    var registries = activeRegistries(state);
+    synchronizeBatchDraftRuns(state);
+
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay && !state.launchingBatch) {
+        closeBatchWizard(state);
+      }
+    });
+
+    var modal = createEl('div', 'persona-lab-modal');
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('h2', null, 'Parallel Evaluation Wizard'));
+    copy.appendChild(
+      createEl(
+        'p',
+        null,
+        'Create a persisted test batch that opens multiple native AI tabs from one saved persona draft.'
+      )
+    );
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.disabled = state.launchingBatch;
+    closeButton.addEventListener('click', function () {
+      closeBatchWizard(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    var stepper = createEl('div', 'persona-lab-stepper');
+    [
+      [1, '1. Count'],
+      [2, '2. Configure'],
+      [3, '3. Review'],
+    ].forEach(function (entry) {
+      stepper.appendChild(
+        createEl(
+          'div',
+          'persona-lab-step' + (state.batchWizardStep === entry[0] ? ' active' : ''),
+          entry[1]
+        )
+      );
+    });
+    body.appendChild(stepper);
+
+    if (state.batchError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.batchError));
+    }
+
+    if (state.batchWizardStep === 1) {
+      var countPanel = createEl('section', 'persona-lab-panel');
+      countPanel.appendChild(createEl('h3', null, 'Choose how many runs to launch'));
+      countPanel.appendChild(
+        createEl(
+          'p',
+          null,
+          'Start with the number of comparisons you want. Persona Lab will generate one configuration slot per run.'
+        )
+      );
+      var countInput = createEl('input', 'persona-lab-input');
+      countInput.type = 'number';
+      countInput.min = '2';
+      countInput.max = '8';
+      countInput.value = String(state.batchDraft.runCount || 2);
+      bindInput(countInput, function () {
+        state.batchDraft.runCount = Math.max(2, Math.min(8, Number(countInput.value) || 2));
+      });
+      renderFieldGroup(countPanel, 'Run count', countInput);
+      countPanel.appendChild(
+        createEl(
+          'div',
+          'persona-lab-helper',
+          'Use this for model bakeoffs, prompt A/B tests, or mixed experiments.'
+        )
+      );
+      body.appendChild(countPanel);
+    } else if (state.batchWizardStep === 2) {
+      var runsPanel = createEl('section', 'persona-lab-panel');
+      runsPanel.appendChild(createEl('h3', null, 'Configure each run'));
+      runsPanel.appendChild(
+        createEl(
+          'p',
+          null,
+          'Each run can override model and prompt content while inheriting the saved persona draft as its baseline.'
+        )
+      );
+      var runGrid = createEl('div', 'persona-lab-run-grid');
+      state.batchDraft.runs.forEach(function (run, index) {
+        var runCard = createEl('div', 'persona-lab-run-card');
+        var title = createEl('div', 'persona-lab-run-card-header');
+        var titleCopy = createEl('div');
+        titleCopy.appendChild(createEl('strong', null, 'Run ' + (index + 1)));
+        titleCopy.appendChild(createEl('div', 'persona-lab-helper', 'Per-run overrides for this tab.'));
+        title.appendChild(titleCopy);
+        runCard.appendChild(title);
+
+        var labelInput = createEl('input', 'persona-lab-input');
+        labelInput.value = run.label || '';
+        bindInput(labelInput, function () {
+          run.label = labelInput.value;
+        });
+        renderFieldGroup(runCard, 'Label', labelInput);
+
+        renderFieldGroup(
+          runCard,
+          'Model',
+          buildModelSelect(registries, run.model || '', function (value) {
+            run.model = value;
+          }, false)
+        );
+
+        var systemInput = createEl('textarea', 'persona-lab-textarea');
+        systemInput.value = run.systemPromptOverride || '';
+        systemInput.placeholder = 'Leave blank to inherit the saved persona system prompt.';
+        bindInput(systemInput, function () {
+          run.systemPromptOverride = systemInput.value;
+        });
+        renderFieldGroup(runCard, 'System prompt override', systemInput);
+
+        var messageInput = createEl('textarea', 'persona-lab-textarea');
+        messageInput.value = run.messagePromptOverride || '';
+        messageInput.placeholder = 'Optional launch-time user/message prompt for this run.';
+        bindInput(messageInput, function () {
+          run.messagePromptOverride = messageInput.value;
+        });
+        renderFieldGroup(runCard, 'Message prompt override', messageInput);
+
+        var runtimeInput = createEl('textarea', 'persona-lab-textarea json');
+        runtimeInput.value = run.runtimeOverridesText || renderJson(ensureObject(run.runtimeOverrides));
+        bindInput(runtimeInput, function () {
+          run.runtimeOverridesText = runtimeInput.value;
+          try {
+            run.runtimeOverrides = parseJsonObject(
+              runtimeInput.value,
+              {},
+              'Runtime overrides for ' + (run.label || ('Run ' + (index + 1)))
+            );
+            state.batchError = '';
+          } catch (error) {
+            state.batchError = stringifyError(error);
+          }
+        });
+        renderFieldGroup(runCard, 'Additional runtime overrides (JSON)', runtimeInput);
+
+        runGrid.appendChild(runCard);
+      });
+      runsPanel.appendChild(runGrid);
+      body.appendChild(runsPanel);
+    } else {
+      var reviewPanel = createEl('section', 'persona-lab-panel');
+      reviewPanel.appendChild(createEl('h3', null, 'Review batch launch'));
+      reviewPanel.appendChild(
+        createEl(
+          'p',
+          null,
+          'This batch will be saved as a reusable evaluation record with linked test runs, thread IDs, and future summary scaffolding.'
+        )
+      );
+      var reviewList = createEl('div', 'persona-lab-review-list');
+      state.batchDraft.runs.forEach(function (run, index) {
+        var item = createEl('div', 'persona-lab-review-item');
+        item.appendChild(createEl('strong', null, run.label || ('Run ' + (index + 1))));
+        item.appendChild(
+          createEl(
+            'p',
+            null,
+            [
+              'Model: ' + (run.model || 'missing'),
+              'System prompt: ' + (run.systemPromptOverride ? 'override' : 'inherit'),
+              'Message prompt: ' + (run.messagePromptOverride ? 'override' : 'none'),
+            ].join(' • ')
+          )
+        );
+        if (Object.keys(ensureObject(run.runtimeOverrides)).length) {
+          item.appendChild(createEl('pre', 'persona-lab-json', renderJson(run.runtimeOverrides)));
+        }
+        reviewList.appendChild(item);
+      });
+      reviewPanel.appendChild(reviewList);
+      body.appendChild(reviewPanel);
+    }
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        state.dirty ? 'Persona Lab will save your draft before launching the batch.' : 'Saved draft is ready to launch.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    if (state.batchWizardStep > 1) {
+      var backButton = createEl('button', 'persona-lab-button', 'Back');
+      backButton.type = 'button';
+      backButton.disabled = state.launchingBatch;
+      backButton.addEventListener('click', function () {
+        state.batchWizardStep -= 1;
+        state.batchError = '';
+        renderState(state);
+      });
+      actions.appendChild(backButton);
+    }
+    if (state.batchWizardStep < 3) {
+      var nextButton = createEl('button', 'persona-lab-button primary', 'Next');
+      nextButton.type = 'button';
+      nextButton.disabled = state.launchingBatch;
+      nextButton.addEventListener('click', function () {
+        try {
+          if (state.batchWizardStep === 1) {
+            synchronizeBatchDraftRuns(state);
+          }
+          if (state.batchWizardStep === 2) {
+            buildBatchPayload(state);
+          }
+          state.batchWizardStep += 1;
+          state.batchError = '';
+        } catch (error) {
+          state.batchError = stringifyError(error);
+        }
+        renderState(state);
+      });
+      actions.appendChild(nextButton);
+    } else {
+      var launchButton = createEl(
+        'button',
+        'persona-lab-button primary',
+        state.launchingBatch ? 'Launching…' : 'Launch Parallel Evaluation'
+      );
+      launchButton.type = 'button';
+      launchButton.disabled = state.launchingBatch;
+      launchButton.addEventListener('click', function () {
+        launchBatch(state).catch(function () {});
+      });
+      actions.appendChild(launchButton);
+    }
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    return overlay;
+  }
+
+  function renderRunDetailDrawer(state) {
+    if (!state.runDetailOpen) {
+      return null;
+    }
+
+    var overlay = createEl('div', 'persona-lab-drawer-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeRunDetail(state);
+      }
+    });
+
+    var drawer = createEl('div', 'persona-lab-drawer');
+    overlay.appendChild(drawer);
+
+    var header = createEl('div', 'persona-lab-drawer-header');
+    var copy = createEl('div');
+    var run = state.runDetailPayload && state.runDetailPayload.run;
+    var runLabel = run && run.batchRunConfig && run.batchRunConfig.label
+      ? run.batchRunConfig.label
+      : (run && run.id ? 'Run ' + run.id : 'Run details');
+    copy.appendChild(createEl('h2', null, runLabel));
+    copy.appendChild(createEl('p', null, 'Inspect per-run metrics, per-turn tool usage, and the raw telemetry payloads captured for this evaluation run.'));
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.addEventListener('click', function () {
+      closeRunDetail(state);
+    });
+    header.appendChild(closeButton);
+    drawer.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-drawer-body');
+    drawer.appendChild(body);
+
+    if (state.runDetailLoading) {
+      body.appendChild(createEl('div', 'persona-lab-empty', 'Loading run details...'));
+      return overlay;
+    }
+
+    if (state.runDetailError) {
+      body.appendChild(createEl('div', 'persona-lab-empty', state.runDetailError));
+      return overlay;
+    }
+
+    if (!run) {
+      body.appendChild(createEl('div', 'persona-lab-empty', 'Run details are not available yet.'));
+      return overlay;
+    }
+
+    var metricsSummary = metricsSummaryOf(run) || metricsSummaryOf(state.runDetailPayload.diagnostics);
+    var summary = createEl('div', 'persona-lab-kv');
+    [
+      ['Run ID', run.id],
+      ['Status', run.status],
+      ['Thread', run.threadId],
+      ['Started', run.startedAt],
+      ['Finished', run.finishedAt || 'In progress'],
+      ['Model', run.batchRunConfig && run.batchRunConfig.model ? run.batchRunConfig.model : (run.usageSummary && run.usageSummary.model) || '—'],
+    ].forEach(function (entry) {
+      var card = createEl('div', 'persona-lab-kv-item');
+      card.appendChild(createEl('span', null, entry[0]));
+      card.appendChild(createEl('strong', null, String(entry[1] || '—')));
+      summary.appendChild(card);
+    });
+    body.appendChild(summary);
+    body.appendChild(renderMetricsSummaryPanel('Metrics Summary', metricsSummary));
+    var comparisonPanel = renderComparisonPanel(metricsSummary);
+    if (comparisonPanel) {
+      body.appendChild(comparisonPanel);
+    }
+    body.appendChild(renderTurnBreakdownPanel(metricsSummary));
+
+    if (state.runDetailPayload.diagnostics && state.runDetailPayload.diagnostics.latestExecutionRun) {
+      var executionPanel = createEl('section', 'persona-lab-panel');
+      executionPanel.appendChild(createEl('h3', null, 'Billing + Execution Snapshot'));
+      executionPanel.appendChild(
+        createEl(
+          'pre',
+          'persona-lab-json',
+          renderJson(state.runDetailPayload.diagnostics.latestExecutionRun)
+        )
+      );
+      body.appendChild(executionPanel);
+    }
+
+    var companionPanel = createEl('section', 'persona-lab-panel');
+    companionPanel.appendChild(createEl('h3', null, 'Raw Companion Payloads'));
+    companionPanel.appendChild(
+      createEl(
+        'pre',
+        'persona-lab-json',
+        renderJson((state.runDetailPayload.diagnostics && state.runDetailPayload.diagnostics.companionEvents) || [])
+      )
+    );
+    body.appendChild(companionPanel);
+
+    return overlay;
+  }
+
+  function renderMain(state) {
+    var shell = createEl('main', 'persona-lab-shell');
+    var toolbar = createEl('div', 'persona-lab-toolbar');
+    var titleCopy = createEl('div');
+    titleCopy.appendChild(createEl('h1', null, 'Persona Lab'));
+    titleCopy.appendChild(
+      createEl(
+        'p',
+        null,
+        'Edit the file-backed persona draft, save it to disk, and launch a native MCPViews AI chat tab that tests the exact saved configuration.'
+      )
+    );
+    toolbar.appendChild(titleCopy);
+
+    var actions = createEl('div', 'persona-lab-actions');
+    var saveButton = createEl('button', 'persona-lab-button', state.saving ? 'Saving…' : 'Save');
+    saveButton.type = 'button';
+    saveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch;
+    saveButton.addEventListener('click', function () {
+      savePersona(state).catch(function () {});
+    });
+    var singleRunButton = createEl(
+      'button',
+      'persona-lab-button',
+      state.testing ? 'Opening…' : 'Single Run'
+    );
+    singleRunButton.type = 'button';
+    singleRunButton.disabled = !state.form || state.testing || state.loadingPersona || state.launchingBatch;
+    singleRunButton.addEventListener('click', function () {
+      testPersona(state).catch(function () {});
+    });
+    var batchButton = createEl(
+      'button',
+      'persona-lab-button primary',
+      state.launchingBatch ? 'Launching…' : 'Parallel Evaluation'
+    );
+    batchButton.type = 'button';
+    batchButton.disabled = !state.form || state.testing || state.loadingPersona || state.launchingBatch;
+    batchButton.addEventListener('click', function () {
+      openBatchWizard(state);
+    });
+    actions.appendChild(saveButton);
+    actions.appendChild(singleRunButton);
+    actions.appendChild(batchButton);
+    toolbar.appendChild(actions);
+    shell.appendChild(toolbar);
+
+    var statusRow = createEl('div', 'persona-lab-toolbar');
+    statusRow.style.paddingTop = '0';
+    statusRow.style.paddingBottom = '0';
+    statusRow.style.borderBottom = 'none';
+    var statusWrap = createEl('div', 'persona-lab-status-stack');
+    statusWrap.appendChild(createEl('div', 'persona-lab-status', state.status || ''));
+    statusWrap.appendChild(createEl('div', 'persona-lab-error', state.error || ''));
+    statusRow.appendChild(statusWrap);
+    shell.appendChild(statusRow);
+
+    var content = createEl('div', 'persona-lab-content');
+    if (state.loading || state.loadingPersona) {
+      content.appendChild(createEl('div', 'persona-lab-empty', 'Loading Persona Lab…'));
+      shell.appendChild(content);
+      return shell;
+    }
+
+    if (!state.form || !state.current) {
+      content.appendChild(createEl('div', 'persona-lab-empty', 'Select a persona from the navigator to begin editing.'));
+      shell.appendChild(content);
+      return shell;
+    }
+
+    var registries = activeRegistries(state);
+
+    var identity = createEl('section', 'persona-lab-panel');
+    identity.appendChild(createEl('h2', null, 'Identity'));
+    var identityGrid = createEl('div', 'persona-lab-grid');
+    var displayNameInput = createEl('input', 'persona-lab-input');
+    displayNameInput.value = state.form.definition.displayName;
+    bindInput(displayNameInput, function () {
+      state.form.definition.displayName = displayNameInput.value;
+      updateDirtyState(state);
+      renderState(state);
+    });
+    renderFieldGroup(identityGrid, 'Display name', displayNameInput);
+    var ownerInput = createEl('input', 'persona-lab-input');
+    ownerInput.value = state.form.definition.owner;
+    bindInput(ownerInput, function () {
+      state.form.definition.owner = ownerInput.value;
+      updateDirtyState(state);
+      renderState(state);
+    });
+    renderFieldGroup(identityGrid, 'Owner', ownerInput);
+    identity.appendChild(identityGrid);
+    var definitionDescription = createEl('textarea', 'persona-lab-textarea');
+    definitionDescription.value = state.form.definition.description;
+    bindInput(definitionDescription, function () {
+      state.form.definition.description = definitionDescription.value;
+      updateDirtyState(state);
+    });
+    renderFieldGroup(identity, 'Definition description', definitionDescription);
+    content.appendChild(identity);
+
+    var promptPanel = createEl('section', 'persona-lab-panel');
+    promptPanel.appendChild(createEl('h2', null, 'Prompt + Rules'));
+    var summaryInput = createEl('input', 'persona-lab-input');
+    summaryInput.value = state.form.draft.summary;
+    bindInput(summaryInput, function () {
+      state.form.draft.summary = summaryInput.value;
+      updateDirtyState(state);
+    });
+    renderFieldGroup(promptPanel, 'Draft summary', summaryInput);
+    var draftDescription = createEl('textarea', 'persona-lab-textarea');
+    draftDescription.value = state.form.draft.description;
+    bindInput(draftDescription, function () {
+      state.form.draft.description = draftDescription.value;
+      updateDirtyState(state);
+    });
+    renderFieldGroup(promptPanel, 'Draft description', draftDescription);
+    var promptInput = createEl('textarea', 'persona-lab-textarea');
+    promptInput.style.minHeight = '220px';
+    promptInput.value = state.form.prompt;
+    bindInput(promptInput, function () {
+      state.form.prompt = promptInput.value;
+      updateDirtyState(state);
+    });
+    renderFieldGroup(promptPanel, 'System prompt', promptInput);
+    var rulesInput = createEl('textarea', 'persona-lab-textarea');
+    rulesInput.value = ensureArray(state.form.draft.rules).join('\n');
+    bindInput(rulesInput, function () {
+      state.form.draft.rules = rulesInput.value
+        .split(/\r?\n/)
+        .map(function (line) { return line.trim(); })
+        .filter(Boolean);
+      updateDirtyState(state);
+    });
+    renderFieldGroup(promptPanel, 'Rules (one per line)', rulesInput);
+    content.appendChild(promptPanel);
+
+    var policyPanel = createEl('section', 'persona-lab-panel');
+    policyPanel.appendChild(createEl('h2', null, 'Models + Tooling'));
+    var policyGrid = createEl('div', 'persona-lab-grid');
+
+    renderFieldGroup(
+      policyGrid,
+      'Default model',
+      buildModelSelect(registries, state.form.draft.modelPolicy.defaultModel, function (value) {
+        state.form.draft.modelPolicy.defaultModel = value;
+        updateDirtyState(state);
+      })
+    );
+    renderFieldGroup(
+      policyGrid,
+      'Fast model',
+      buildModelSelect(registries, state.form.draft.modelPolicy.fastModel || '', function (value) {
+        state.form.draft.modelPolicy.fastModel = value;
+        updateDirtyState(state);
+      })
+    );
+    renderFieldGroup(
+      policyGrid,
+      'Reasoning model',
+      buildModelSelect(registries, state.form.draft.modelPolicy.reasoningModel || '', function (value) {
+        state.form.draft.modelPolicy.reasoningModel = value;
+        updateDirtyState(state);
+      })
+    );
+    policyPanel.appendChild(policyGrid);
+
+    var workflowModels = createEl('textarea', 'persona-lab-textarea json');
+    workflowModels.value = renderJson(state.form.draft.modelPolicy.workflowModels);
+    bindInput(workflowModels, function () {
+      try {
+        state.form.draft.modelPolicy.workflowModels = parseWorkflowModels(workflowModels.value);
+        updateDirtyState(state);
+        if (state.error && /workflow model overrides/i.test(state.error)) {
+          setError(state, '');
+        }
+      } catch (error) {
+        setError(state, stringifyError(error));
+      }
+    });
+    renderFieldGroup(policyPanel, 'Workflow-specific model overrides (JSON)', workflowModels);
+
+    policyPanel.appendChild(createEl('h3', null, 'Allowed business tools'));
+    policyPanel.appendChild(
+      buildCheckboxGrid(
+        ensureArray(registries.toolRegistry && registries.toolRegistry.businessTools),
+        state.form.draft.toolPolicy.allowedBusinessTools,
+        function (key) {
+          state.form.draft.toolPolicy.allowedBusinessTools = toggleListValue(
+            state.form.draft.toolPolicy.allowedBusinessTools,
+            key
+          );
+          updateDirtyState(state);
+          renderState(state);
+        }
+      )
+    );
+    policyPanel.appendChild(createEl('h3', null, 'Allowed connectors'));
+    policyPanel.appendChild(
+      buildCheckboxGrid(
+        ensureArray(registries.toolRegistry && registries.toolRegistry.connectors),
+        state.form.draft.toolPolicy.allowedConnectorKeys,
+        function (key) {
+          state.form.draft.toolPolicy.allowedConnectorKeys = toggleListValue(
+            state.form.draft.toolPolicy.allowedConnectorKeys,
+            key
+          );
+          updateDirtyState(state);
+          renderState(state);
+        }
+      )
+    );
+    content.appendChild(policyPanel);
+
+    var skillPanel = createEl('section', 'persona-lab-panel');
+    skillPanel.appendChild(createEl('h2', null, 'Skills + Workflows'));
+    skillPanel.appendChild(createEl('h3', null, 'Built-in skills'));
+    skillPanel.appendChild(
+      buildCheckboxGrid(
+        ensureArray(registries.builtInSkills),
+        state.form.draft.builtInSkills,
+        function (key) {
+          state.form.draft.builtInSkills = toggleListValue(state.form.draft.builtInSkills, key);
+          updateDirtyState(state);
+          renderState(state);
+        }
+      )
+    );
+    skillPanel.appendChild(createEl('h3', null, 'Workflow refs'));
+    skillPanel.appendChild(
+      buildCheckboxGrid(
+        ensureArray(registries.workflows),
+        state.form.draft.workflowRefs,
+        function (key) {
+          state.form.draft.workflowRefs = toggleListValue(state.form.draft.workflowRefs, key);
+          updateDirtyState(state);
+          renderState(state);
+        }
+      )
+    );
+
+    var sandboxMode = createEl('select', 'persona-lab-select');
+    [
+      { value: 'disabled', label: 'Disabled' },
+      { value: 'brokered', label: 'Brokered Cloudflare sandbox' },
+    ].forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      if (state.form.draft.sandboxPolicy.mode === entry.value) option.selected = true;
+      sandboxMode.appendChild(option);
+    });
+    bindInput(sandboxMode, function () {
+      if (sandboxMode.value === 'brokered') {
+        state.form.draft.sandboxPolicy = {
+          mode: 'brokered',
+          provider: 'cloudflare-sandbox',
+          exportToolName:
+            state.form.draft.sandboxPolicy.exportToolName || 'finance_report_export',
+        };
+      } else {
+        state.form.draft.sandboxPolicy = { mode: 'disabled' };
+      }
+      updateDirtyState(state);
+      renderState(state);
+    });
+    renderFieldGroup(skillPanel, 'Sandbox policy', sandboxMode);
+    if (state.form.draft.sandboxPolicy.mode === 'brokered') {
+      var exportTool = createEl('input', 'persona-lab-input');
+      exportTool.value = state.form.draft.sandboxPolicy.exportToolName || '';
+      bindInput(exportTool, function () {
+        state.form.draft.sandboxPolicy.exportToolName = exportTool.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(skillPanel, 'Sandbox export tool name', exportTool);
+    }
+
+    skillPanel.appendChild(createEl('h3', null, 'Custom skills'));
+    var skillList = createEl('div', 'persona-lab-section-list');
+    ensureArray(state.form.customSkills).forEach(function (skill, index) {
+      var skillCard = createEl('div', 'persona-lab-skill');
+      var skillHeader = createEl('div', 'persona-lab-skill-header');
+      skillHeader.appendChild(createEl('strong', null, skill.title || ('Skill ' + (index + 1))));
+      var remove = createEl('button', 'persona-lab-button', 'Remove');
+      remove.type = 'button';
+      remove.addEventListener('click', function () {
+        state.form.customSkills.splice(index, 1);
+        updateDirtyState(state);
+        renderState(state);
+      });
+      skillHeader.appendChild(remove);
+      skillCard.appendChild(skillHeader);
+      ['key', 'title', 'summary'].forEach(function (field) {
+        var input = createEl('input', 'persona-lab-input');
+        input.value = skill[field] || '';
+        bindInput(input, function () {
+          skill[field] = input.value;
+          updateDirtyState(state);
+        });
+        renderFieldGroup(skillCard, field, input);
+      });
+      var contentInput = createEl('textarea', 'persona-lab-textarea');
+      contentInput.style.minHeight = '160px';
+      contentInput.value = skill.content || '';
+      bindInput(contentInput, function () {
+        skill.content = contentInput.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(skillCard, 'content', contentInput);
+      skillList.appendChild(skillCard);
+    });
+    if (!state.form.customSkills.length) {
+      skillList.appendChild(createEl('div', 'persona-lab-empty', 'No custom skills yet.'));
+    }
+    skillPanel.appendChild(skillList);
+    var addSkill = createEl('button', 'persona-lab-button', 'Add custom skill');
+    addSkill.type = 'button';
+    addSkill.addEventListener('click', function () {
+      state.form.customSkills.push({
+        key: 'custom-skill-' + (state.form.customSkills.length + 1),
+        title: 'New custom skill',
+        summary: 'Describe what this skill adds.',
+        content: 'Add markdown instructions here.',
+      });
+      updateDirtyState(state);
+      renderState(state);
+    });
+    skillPanel.appendChild(addSkill);
+    content.appendChild(skillPanel);
+
+    content.appendChild(renderInspectorPanel(state));
+
+    var promptSnapshot = createEl('section', 'persona-lab-panel');
+    promptSnapshot.appendChild(createEl('h2', null, 'Runtime Snapshots'));
+    promptSnapshot.appendChild(createEl('h3', null, 'Saved system prompt'));
+    promptSnapshot.appendChild(createEl('pre', 'persona-lab-json', state.current.document.prompt || ''));
+    promptSnapshot.appendChild(createEl('h3', null, 'Inspector'));
+    promptSnapshot.appendChild(createEl('pre', 'persona-lab-json', renderJson(state.current.inspector || {})));
+    content.appendChild(promptSnapshot);
+
+    content.appendChild(renderLatestRunPanel(state));
+    content.appendChild(renderLatestBatchPanel(state));
+    shell.appendChild(content);
+    return shell;
+  }
+
+  function renderState(state) {
+    if (!state.container) return;
+    captureScrollPositions(state);
+    replaceSessionChrome(state, state.current && state.current.document
+      ? SESSION_LABEL + ' · ' + state.current.document.definition.displayName
+      : SESSION_LABEL);
+
+    state.container.innerHTML = '';
+    var root = createEl('div', 'persona-lab-root');
+    root.appendChild(buildNav(state));
+    root.appendChild(renderMain(state));
+    state.container.appendChild(root);
+    var wizard = renderBatchWizard(state);
+    if (wizard) {
+      state.container.appendChild(wizard);
+    }
+    var drawer = renderRunDetailDrawer(state);
+    if (drawer) {
+      state.container.appendChild(drawer);
+    }
+    restoreScrollPositions(state);
+  }
+
+  window.__renderers['persona_lab'] = function renderPersonaLab(container) {
+    ensureStyles();
+    var state = getSessionState();
+    state.container = container;
+    renderState(state);
+    if (!state.bootstrapLoaded && !state.bootstrapPromise) {
+      fetchBootstrap(state);
+    }
+  };
+})();

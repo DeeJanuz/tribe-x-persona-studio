@@ -1,0 +1,32 @@
+{
+  "name": "tribe-x-ai-plugin",
+  "version": "0.1.0",
+  "renderers": {},
+  "renderer_definitions": [
+    {
+      "name": "persona_lab",
+      "description": "Standalone local persona editor with save-first single-run and parallel evaluation launchers for ProPaasAI personas.",
+      "scope": "universal",
+      "data_hint": "{}",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Persona Lab"
+    }
+  ],
+  "registry_index": {
+    "summary": "Standalone Persona Lab for editing file-backed personas and launching native MCPViews single-run and parallel evaluation test chats.",
+    "tags": [
+      "persona",
+      "ai",
+      "testing",
+      "localhost"
+    ],
+    "tool_groups": [],
+    "renderer_names": [
+      "persona_lab"
+    ]
+  },
+  "plugin_rules": [
+    "Persona Lab is a standalone localhost renderer that edits file-backed ProPaasAI personas and launches save-first native AI single runs and parallel evaluation batches in MCPViews."
+  ]
+}
