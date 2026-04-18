@@ -775,7 +775,24 @@
       });
   }
 
-  function waitForThread(threadId, attempts) {
+  function buildLaunchThreadSeed(launch) {
+    if (!launch || !launch.threadId) {
+      return null;
+    }
+    return {
+      id: launch.threadId,
+      title: launch.title || 'Persona Lab run',
+      organizationId: launch.organizationId || null,
+      workspaceId: launch.workspaceId || null,
+      projectId: launch.projectId || null,
+      rowState: null,
+      optimistic: false,
+      hydrateState: 'READY',
+      lastActivityAt: new Date().toISOString(),
+    };
+  }
+
+  function waitForThread(threadId, attempts, seed) {
     attempts = attempts || 24;
     return new Promise(function (resolve, reject) {
       function tick(remaining) {
@@ -791,16 +808,18 @@
           reject(new Error('Timed out waiting for the Persona Lab thread to appear in MCPViews.'));
           return;
         }
-        var refreshPromise =
-          aiState && typeof aiState.refreshNavigator === 'function'
-            ? aiState.refreshNavigator(true)
-            : Promise.resolve();
-        Promise.resolve(refreshPromise)
+        var hydratePromise = Promise.resolve();
+        if (aiState && typeof aiState.hydrateThread === 'function') {
+          hydratePromise = aiState.hydrateThread(threadId, seed);
+        } else if (aiState && typeof aiState.refreshNavigator === 'function') {
+          hydratePromise = aiState.refreshNavigator(remaining === attempts);
+        }
+        Promise.resolve(hydratePromise)
           .catch(function () {})
           .finally(function () {
             window.setTimeout(function () {
               tick(remaining - 1);
-            }, 900);
+            }, 350);
           });
       }
       tick(attempts);
@@ -871,7 +890,7 @@
     });
   }
 
-  function openThreadInNativeAi(threadId, organizationId, prompt) {
+  function openThreadInNativeAi(threadId, organizationId, prompt, seed) {
     if (!window.__tribexAiClient || !window.__tribexAiState) {
       return Promise.reject(new Error('The native AI UI is not available in this MCPViews session.'));
     }
@@ -893,7 +912,7 @@
 
     return Promise.resolve(organizationPromise)
       .then(function () {
-        return waitForThread(threadId, 24);
+        return waitForThread(threadId, 12, seed);
       })
       .then(function () {
         aiState.openThread(threadId, { connectStream: false });
@@ -915,10 +934,12 @@
         telemetryToken: launch.telemetryToken || null,
       });
     }
+    var threadSeed = buildLaunchThreadSeed(launch);
     return openThreadInNativeAi(
       launch.threadId,
       launch.organizationId,
-      batchPromptForRun(findBatchRunById(state, launch.personaTestRunId))
+      batchPromptForRun(findBatchRunById(state, launch.personaTestRunId)),
+      threadSeed
     ).then(function (sessionId) {
       return ensureBatchPromptSubmitted(state, launch).then(function () {
         return sessionId;
@@ -1071,9 +1092,21 @@
 
   function openBatchRunThread(state, run) {
     var launch = findBatchLaunch(state, run);
+    var threadSeed = launch || {
+      threadId: run.threadId,
+      title: run.label || 'Persona Lab run',
+      organizationId: run.organizationId || null,
+      workspaceId: run.workspaceId || null,
+      projectId: run.projectId || null,
+    };
     var openPromise = launch
       ? openTestThread(state, launch)
-      : openThreadInNativeAi(run.threadId, run.organizationId || null, batchPromptForRun(run));
+      : openThreadInNativeAi(
+          run.threadId,
+          run.organizationId || null,
+          batchPromptForRun(run),
+          threadSeed
+        );
     return openPromise
       .then(function () {
         setStatus(state, 'Opened chat for ' + (run.label || run.id || 'this run') + '.');
