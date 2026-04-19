@@ -320,6 +320,7 @@
         builtInSkills: Array.isArray(detail.document.draft.builtInSkills)
           ? detail.document.draft.builtInSkills.slice()
           : [],
+        orchestration: normalizeOrchestration(detail.document.draft.orchestration),
         sandboxPolicy: clone(detail.document.draft.sandboxPolicy || { mode: 'disabled' }),
       },
       prompt: detail.document.prompt || '',
@@ -412,6 +413,37 @@
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   }
 
+  function clampInteger(value, min, max, fallback) {
+    var numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(numeric)));
+  }
+
+  function defaultOrchestration() {
+    return {
+      capability: 'DELEGATE',
+      dispatchMode: 'REVIEW',
+      maxParallelSubagents: 3,
+      maxDepth: 1,
+    };
+  }
+
+  function normalizeOrchestration(value) {
+    var source = ensureObject(value);
+    var fallback = defaultOrchestration();
+    return {
+      capability: source.capability || fallback.capability,
+      dispatchMode: source.dispatchMode || fallback.dispatchMode,
+      maxParallelSubagents: clampInteger(
+        source.maxParallelSubagents,
+        1,
+        10,
+        fallback.maxParallelSubagents
+      ),
+      maxDepth: clampInteger(source.maxDepth, 0, 3, fallback.maxDepth),
+    };
+  }
+
   function createEl(tag, className, text) {
     var el = document.createElement(tag);
     if (className) el.className = className;
@@ -428,6 +460,45 @@
     return list.indexOf(value) >= 0
       ? list.filter(function (item) { return item !== value; })
       : list.concat([value]);
+  }
+
+  function normalizeChoiceOption(item) {
+    if (typeof item === 'string') {
+      return { key: item, label: item, description: '' };
+    }
+    if (!item || typeof item !== 'object') return null;
+    var key = item.key || item.name;
+    if (!key) return null;
+    return {
+      key: String(key),
+      label: String(item.label || item.name || key),
+      description: item.description ? String(item.description) : '',
+      group: item.group ? String(item.group) : '',
+      toolCount: Number.isFinite(Number(item.toolCount)) ? Number(item.toolCount) : null,
+    };
+  }
+
+  function mergeChoiceOptions(items, selected) {
+    var options = [];
+    var seen = {};
+    ensureArray(items).forEach(function (item) {
+      var option = normalizeChoiceOption(item);
+      if (!option || seen[option.key]) return;
+      seen[option.key] = true;
+      options.push(option);
+    });
+    ensureArray(selected).forEach(function (key) {
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      options.push({
+        key: key,
+        label: key,
+        description: 'Currently selected but not returned by the ProPaasAI registry.',
+        group: 'Unregistered',
+        toolCount: null,
+      });
+    });
+    return options;
   }
 
   function parseWorkflowModels(raw) {
@@ -657,9 +728,12 @@
       models: [],
       toolRegistry: {
         businessTools: [],
+        businessToolOptions: [],
         connectors: [],
+        connectorOptions: [],
         reservedCoreTools: [],
       },
+      orchestration: null,
     };
   }
 
@@ -764,6 +838,7 @@
 
     var payload = clone(state.form);
     payload.draft.modelPolicy.workflowModels = workflowModels;
+    payload.draft.orchestration = normalizeOrchestration(payload.draft.orchestration);
 
     return request(
       'PUT',
@@ -1429,13 +1504,14 @@
 
   function buildCheckboxGrid(items, selected, onToggle) {
     var grid = createEl('div', 'persona-lab-choice-grid');
-    ensureArray(items).forEach(function (item) {
-      var key = typeof item === 'string' ? item : item.key;
-      var label = typeof item === 'string' ? item : item.label;
+    var selectedValues = ensureArray(selected);
+    mergeChoiceOptions(items, selectedValues).forEach(function (item) {
+      var key = item.key;
+      var label = item.label;
       var row = createEl('label', 'persona-lab-choice');
       var input = document.createElement('input');
       input.type = 'checkbox';
-      input.checked = selected.indexOf(key) >= 0;
+      input.checked = selectedValues.indexOf(key) >= 0;
       input.addEventListener('change', function () {
         onToggle(key);
       });
@@ -1443,6 +1519,11 @@
       var copy = createEl('div');
       copy.appendChild(createEl('strong', null, label));
       copy.appendChild(createEl('code', null, key));
+      if (item.description) {
+        copy.appendChild(createEl('p', 'persona-lab-helper', item.description));
+      } else if (item.toolCount !== null) {
+        copy.appendChild(createEl('p', 'persona-lab-helper', formatNumber(item.toolCount) + ' tools'));
+      }
       row.appendChild(copy);
       grid.appendChild(row);
     });
@@ -1462,6 +1543,21 @@
       option.value = model;
       option.textContent = model;
       if (model === selectedValue) option.selected = true;
+      select.appendChild(option);
+    });
+    bindInput(select, function () {
+      onChange(select.value);
+    });
+    return select;
+  }
+
+  function buildChoiceSelect(options, selectedValue, onChange) {
+    var select = createEl('select', 'persona-lab-select');
+    mergeChoiceOptions(options, selectedValue ? [selectedValue] : []).forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.key;
+      option.textContent = entry.label;
+      if (entry.key === selectedValue) option.selected = true;
       select.appendChild(option);
     });
     bindInput(select, function () {
@@ -2485,10 +2581,85 @@
     });
     renderFieldGroup(policyPanel, 'Workflow-specific model overrides (JSON)', workflowModels);
 
+    state.form.draft.orchestration = normalizeOrchestration(state.form.draft.orchestration);
+    var orchestration = state.form.draft.orchestration;
+    var orchestrationRegistry = ensureObject(registries.orchestration);
+    var capabilityOptions = ensureArray(orchestrationRegistry.capabilities);
+    if (!capabilityOptions.length) {
+      capabilityOptions = [
+        { key: 'DISABLED', label: 'Disabled' },
+        { key: 'DELEGATE', label: 'Delegate' },
+        { key: 'COORDINATOR', label: 'Coordinator' },
+        { key: 'COORDINATOR_AND_DELEGATE', label: 'Coordinator + Delegate' },
+      ];
+    }
+    var dispatchModeOptions = ensureArray(orchestrationRegistry.dispatchModes);
+    if (!dispatchModeOptions.length) {
+      dispatchModeOptions = [
+        { key: 'REVIEW', label: 'Review' },
+        { key: 'AUTO', label: 'Auto' },
+        { key: 'MANUAL', label: 'Manual' },
+      ];
+    }
+    policyPanel.appendChild(createEl('h3', null, 'Orchestration'));
+    var orchestrationGrid = createEl('div', 'persona-lab-grid');
+    renderFieldGroup(
+      orchestrationGrid,
+      'Capability',
+      buildChoiceSelect(capabilityOptions, orchestration.capability, function (value) {
+        state.form.draft.orchestration.capability = value;
+        updateDirtyState(state);
+      })
+    );
+    renderFieldGroup(
+      orchestrationGrid,
+      'Dispatch mode',
+      buildChoiceSelect(dispatchModeOptions, orchestration.dispatchMode, function (value) {
+        state.form.draft.orchestration.dispatchMode = value;
+        updateDirtyState(state);
+      })
+    );
+    var maxParallelInput = createEl('input', 'persona-lab-input');
+    maxParallelInput.type = 'number';
+    maxParallelInput.min = '1';
+    maxParallelInput.max = '10';
+    maxParallelInput.step = '1';
+    maxParallelInput.value = String(orchestration.maxParallelSubagents);
+    bindInput(maxParallelInput, function () {
+      state.form.draft.orchestration.maxParallelSubagents = clampInteger(
+        maxParallelInput.value,
+        1,
+        10,
+        3
+      );
+      updateDirtyState(state);
+    });
+    renderFieldGroup(orchestrationGrid, 'Max parallel subagents', maxParallelInput);
+    var maxDepthInput = createEl('input', 'persona-lab-input');
+    maxDepthInput.type = 'number';
+    maxDepthInput.min = '0';
+    maxDepthInput.max = '3';
+    maxDepthInput.step = '1';
+    maxDepthInput.value = String(orchestration.maxDepth);
+    bindInput(maxDepthInput, function () {
+      state.form.draft.orchestration.maxDepth = clampInteger(maxDepthInput.value, 0, 3, 1);
+      updateDirtyState(state);
+    });
+    renderFieldGroup(orchestrationGrid, 'Max depth', maxDepthInput);
+    policyPanel.appendChild(orchestrationGrid);
+
+    var toolRegistry = ensureObject(registries.toolRegistry);
+    var businessToolOptions = ensureArray(toolRegistry.businessToolOptions).length
+      ? toolRegistry.businessToolOptions
+      : ensureArray(toolRegistry.businessTools);
+    var connectorOptions = ensureArray(toolRegistry.connectorOptions).length
+      ? toolRegistry.connectorOptions
+      : ensureArray(toolRegistry.connectors);
+
     policyPanel.appendChild(createEl('h3', null, 'Allowed business tools'));
     policyPanel.appendChild(
       buildCheckboxGrid(
-        ensureArray(registries.toolRegistry && registries.toolRegistry.businessTools),
+        businessToolOptions,
         state.form.draft.toolPolicy.allowedBusinessTools,
         function (key) {
           state.form.draft.toolPolicy.allowedBusinessTools = toggleListValue(
@@ -2503,7 +2674,7 @@
     policyPanel.appendChild(createEl('h3', null, 'Allowed connectors'));
     policyPanel.appendChild(
       buildCheckboxGrid(
-        ensureArray(registries.toolRegistry && registries.toolRegistry.connectors),
+        connectorOptions,
         state.form.draft.toolPolicy.allowedConnectorKeys,
         function (key) {
           state.form.draft.toolPolicy.allowedConnectorKeys = toggleListValue(
