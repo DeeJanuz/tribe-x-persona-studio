@@ -90,6 +90,8 @@
         modalScrollTop: 0,
         drawerScrollTop: 0,
         chromeKey: '',
+        ruleEditorIndex: -1,
+        ruleEditorDraft: '',
       };
     }
     return globalState.sessions[sessionId];
@@ -157,10 +159,23 @@
       '.persona-lab-panel p{margin:0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-field{display:flex;flex-direction:column;gap:8px}',
       '.persona-lab-field label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-field-label-row,.persona-lab-heading-row{display:flex;align-items:center;gap:8px;min-width:0}',
+      '.persona-lab-heading-row h2,.persona-lab-heading-row h3{min-width:0}',
+      '.persona-lab-tooltip{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:19px;height:19px;border-radius:999px;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-secondary);font-size:12px;font-weight:800;line-height:1;cursor:help}',
+      '.persona-lab-tooltip:hover,.persona-lab-tooltip:focus-visible{border-color:var(--accent-primary);color:var(--text-primary);outline:none}',
+      '.persona-lab-tooltip-popover{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);z-index:5;width:min(320px,calc(100vw - 40px));padding:10px 12px;border-radius:12px;border:1px solid var(--glass-border);background:var(--glass-bg-heavy);box-shadow:var(--glass-shadow-elevated);color:var(--text-secondary);font-size:12px;font-weight:500;line-height:1.45;text-transform:none;letter-spacing:0;text-align:left;white-space:normal;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease}',
+      '.persona-lab-tooltip:hover .persona-lab-tooltip-popover,.persona-lab-tooltip:focus-visible .persona-lab-tooltip-popover{opacity:1;transform:translateX(-50%) translateY(0)}',
       '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);color:var(--text-primary)}',
       '.persona-lab-input::placeholder,.persona-lab-textarea::placeholder{color:var(--text-tertiary)}',
       '.persona-lab-textarea{min-height:110px;resize:vertical;line-height:1.55}',
       '.persona-lab-textarea.json{min-height:140px;font-family:var(--font-mono);font-size:12px}',
+      '.persona-lab-rule-editor{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:12px;align-items:start}',
+      '.persona-lab-rule-list{display:flex;flex-direction:column;gap:8px}',
+      '.persona-lab-rule-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle);color:var(--text-primary);padding:10px 12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;transition:border-color .15s ease,background .15s ease}',
+      '.persona-lab-rule-item:hover,.persona-lab-rule-item.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
+      '.persona-lab-rule-item span{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary);font-weight:800}',
+      '.persona-lab-rule-item strong{font-size:13px;line-height:1.35;font-weight:600;color:var(--text-primary)}',
+      '.persona-lab-rule-controls{display:flex;flex-direction:column;gap:10px;min-width:0}',
       '.persona-lab-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}',
       '.persona-lab-choice{display:flex;align-items:flex-start;gap:10px;border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-choice input{margin-top:2px}',
@@ -218,7 +233,7 @@
       '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:-.02em}',
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper{grid-template-columns:1fr}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor{grid-template-columns:1fr}}',
       '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}}',
     ].join('');
     document.head.appendChild(style);
@@ -779,6 +794,9 @@
         state.form = buildEditableForm(detail);
         state.lastSavedFingerprint = computeFingerprint(state.form);
         state.dirty = false;
+        state.ruleEditorIndex = ensureArray(state.form.draft.rules).length ? 0 : -1;
+        state.ruleEditorDraft =
+          state.ruleEditorIndex >= 0 ? state.form.draft.rules[state.ruleEditorIndex] : '';
         state.loadingPersona = false;
         state.batchWizardOpen = false;
         state.batchError = '';
@@ -1493,13 +1511,156 @@
       });
   }
 
-  function renderFieldGroup(parent, label, input) {
+  function createTooltip(helpText) {
+    var trigger = createEl('span', 'persona-lab-tooltip', '?');
+    trigger.tabIndex = 0;
+    trigger.setAttribute('role', 'button');
+    trigger.setAttribute('aria-label', helpText);
+    trigger.title = helpText;
+    trigger.appendChild(createEl('span', 'persona-lab-tooltip-popover', helpText));
+    return trigger;
+  }
+
+  function appendSectionHeading(parent, tag, label, helpText) {
+    if (!helpText) {
+      parent.appendChild(createEl(tag, null, label));
+      return;
+    }
+    var row = createEl('div', 'persona-lab-heading-row');
+    row.appendChild(createEl(tag, null, label));
+    row.appendChild(createTooltip(helpText));
+    parent.appendChild(row);
+  }
+
+  function renderFieldGroup(parent, label, input, helpText) {
     var field = createEl('div', 'persona-lab-field');
-    var labelEl = createEl('label', null, label);
-    field.appendChild(labelEl);
+    var labelRow = createEl('div', 'persona-lab-field-label-row');
+    labelRow.appendChild(createEl('label', null, label));
+    if (helpText) {
+      labelRow.appendChild(createTooltip(helpText));
+    }
+    field.appendChild(labelRow);
     field.appendChild(input);
     parent.appendChild(field);
     return field;
+  }
+
+  function compactRuleText(value) {
+    var text = String(value || '').trim();
+    if (!text) return 'Blank rule';
+    return text.length > 96 ? text.slice(0, 93) + '...' : text;
+  }
+
+  function syncRuleEditorState(state) {
+    var rules = ensureArray(state.form && state.form.draft && state.form.draft.rules);
+    if (!rules.length) {
+      state.ruleEditorIndex = -1;
+      if (state.ruleEditorDraft == null) state.ruleEditorDraft = '';
+      return;
+    }
+    if (state.ruleEditorIndex < 0 || state.ruleEditorIndex >= rules.length) {
+      state.ruleEditorIndex = 0;
+      state.ruleEditorDraft = rules[0] || '';
+    }
+    if (state.ruleEditorDraft == null) {
+      state.ruleEditorDraft = rules[state.ruleEditorIndex] || '';
+    }
+  }
+
+  function renderRulesEditor(state) {
+    syncRuleEditorState(state);
+    var rules = ensureArray(state.form.draft.rules);
+    var wrapper = createEl('div', 'persona-lab-rule-editor');
+    var ruleList = createEl('div', 'persona-lab-rule-list');
+
+    if (!rules.length) {
+      ruleList.appendChild(
+        createEl('div', 'persona-lab-empty', 'No persona rules yet. Add a rule to define a behavioral constraint.')
+      );
+    } else {
+      rules.forEach(function (rule, index) {
+        var item = createEl(
+          'button',
+          'persona-lab-rule-item' + (index === state.ruleEditorIndex ? ' active' : '')
+        );
+        item.type = 'button';
+        item.appendChild(createEl('span', null, 'Rule ' + (index + 1)));
+        item.appendChild(createEl('strong', null, compactRuleText(rule)));
+        item.addEventListener('click', function () {
+          state.ruleEditorIndex = index;
+          state.ruleEditorDraft = rule || '';
+          renderState(state);
+        });
+        ruleList.appendChild(item);
+      });
+    }
+
+    var controls = createEl('div', 'persona-lab-rule-controls');
+    var editor = createEl('textarea', 'persona-lab-textarea');
+    editor.placeholder = 'Write one clear rule, such as: Always confirm financial assumptions before summarizing a forecast.';
+    editor.value = state.ruleEditorDraft || '';
+    bindInput(editor, function () {
+      state.ruleEditorDraft = editor.value;
+    });
+    controls.appendChild(editor);
+
+    var actions = createEl('div', 'persona-lab-actions');
+    var addRule = createEl('button', 'persona-lab-button', 'Add new rule');
+    addRule.type = 'button';
+    addRule.addEventListener('click', function () {
+      var newRule = String(state.ruleEditorDraft || '').trim() || 'Describe the new persona rule.';
+      state.form.draft.rules = rules.concat([newRule]);
+      state.ruleEditorIndex = state.form.draft.rules.length - 1;
+      state.ruleEditorDraft = newRule;
+      updateDirtyState(state);
+      renderState(state);
+    });
+    actions.appendChild(addRule);
+
+    var modifyRule = createEl('button', 'persona-lab-button', 'Modify existing rule');
+    modifyRule.type = 'button';
+    modifyRule.disabled = state.ruleEditorIndex < 0;
+    modifyRule.addEventListener('click', function () {
+      if (state.ruleEditorIndex < 0) return;
+      var nextRule = String(state.ruleEditorDraft || '').trim();
+      if (!nextRule) {
+        setError(state, 'Rule text cannot be blank.');
+        renderState(state);
+        return;
+      }
+      state.form.draft.rules = rules.map(function (rule, index) {
+        return index === state.ruleEditorIndex ? nextRule : rule;
+      });
+      state.ruleEditorDraft = nextRule;
+      updateDirtyState(state);
+      renderState(state);
+    });
+    actions.appendChild(modifyRule);
+
+    var deleteRule = createEl('button', 'persona-lab-button', 'Delete Rule');
+    deleteRule.type = 'button';
+    deleteRule.disabled = state.ruleEditorIndex < 0;
+    deleteRule.addEventListener('click', function () {
+      if (state.ruleEditorIndex < 0) return;
+      state.form.draft.rules = rules.filter(function (_rule, index) {
+        return index !== state.ruleEditorIndex;
+      });
+      if (state.form.draft.rules.length) {
+        state.ruleEditorIndex = Math.min(state.ruleEditorIndex, state.form.draft.rules.length - 1);
+        state.ruleEditorDraft = state.form.draft.rules[state.ruleEditorIndex] || '';
+      } else {
+        state.ruleEditorIndex = -1;
+        state.ruleEditorDraft = '';
+      }
+      updateDirtyState(state);
+      renderState(state);
+    });
+    actions.appendChild(deleteRule);
+    controls.appendChild(actions);
+
+    wrapper.appendChild(ruleList);
+    wrapper.appendChild(controls);
+    return wrapper;
   }
 
   function buildCheckboxGrid(items, selected, onToggle) {
@@ -2524,16 +2685,13 @@
       updateDirtyState(state);
     });
     renderFieldGroup(promptPanel, 'System prompt', promptInput);
-    var rulesInput = createEl('textarea', 'persona-lab-textarea');
-    rulesInput.value = ensureArray(state.form.draft.rules).join('\n');
-    bindInput(rulesInput, function () {
-      state.form.draft.rules = rulesInput.value
-        .split(/\r?\n/)
-        .map(function (line) { return line.trim(); })
-        .filter(Boolean);
-      updateDirtyState(state);
-    });
-    renderFieldGroup(promptPanel, 'Rules (one per line)', rulesInput);
+    appendSectionHeading(
+      promptPanel,
+      'h3',
+      'Rules',
+      'Persona rules are saved as an ordered list of behavioral constraints. Example: Always ask one clarifying question before estimating project scope.'
+    );
+    promptPanel.appendChild(renderRulesEditor(state));
     content.appendChild(promptPanel);
 
     var policyPanel = createEl('section', 'persona-lab-panel');
@@ -2689,8 +2847,18 @@
     content.appendChild(policyPanel);
 
     var skillPanel = createEl('section', 'persona-lab-panel');
-    skillPanel.appendChild(createEl('h2', null, 'Skills + Workflows'));
-    skillPanel.appendChild(createEl('h3', null, 'Built-in skills'));
+    appendSectionHeading(
+      skillPanel,
+      'h2',
+      'Skills + Workflows',
+      'Skills and workflow refs add reusable instructions that are bundled into the saved persona configuration.'
+    );
+    appendSectionHeading(
+      skillPanel,
+      'h3',
+      'Built-in skills',
+      'Select registered skills this persona should receive. Examples: tdd-workflow, solid-review, or a domain-specific analysis skill.'
+    );
     skillPanel.appendChild(
       buildCheckboxGrid(
         ensureArray(registries.builtInSkills),
@@ -2702,7 +2870,12 @@
         }
       )
     );
-    skillPanel.appendChild(createEl('h3', null, 'Workflow refs'));
+    appendSectionHeading(
+      skillPanel,
+      'h3',
+      'Workflow refs',
+      'Select reusable workflow definitions the persona can follow. Examples: weekly-report-review or customer-escalation-triage.'
+    );
     skillPanel.appendChild(
       buildCheckboxGrid(
         ensureArray(registries.workflows),
@@ -2740,7 +2913,12 @@
       updateDirtyState(state);
       renderState(state);
     });
-    renderFieldGroup(skillPanel, 'Sandbox policy', sandboxMode);
+    renderFieldGroup(
+      skillPanel,
+      'Sandbox policy',
+      sandboxMode,
+      'Controls whether this persona can use the brokered execution sandbox. Example: Brokered Cloudflare sandbox for report generation tasks.'
+    );
     if (state.form.draft.sandboxPolicy.mode === 'brokered') {
       var exportTool = createEl('input', 'persona-lab-input');
       exportTool.value = state.form.draft.sandboxPolicy.exportToolName || '';
@@ -2748,11 +2926,27 @@
         state.form.draft.sandboxPolicy.exportToolName = exportTool.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(skillPanel, 'Sandbox export tool name', exportTool);
+      renderFieldGroup(
+        skillPanel,
+        'Sandbox export tool name',
+        exportTool,
+        'Tool name exposed for sandbox exports. Use a stable snake_case identifier. Example: finance_report_export.'
+      );
     }
 
-    skillPanel.appendChild(createEl('h3', null, 'Custom skills'));
+    appendSectionHeading(
+      skillPanel,
+      'h3',
+      'Custom skills',
+      'Custom skills are persona-local markdown instructions with metadata. Use them for behavior that is not in the shared skill registry.'
+    );
     var skillList = createEl('div', 'persona-lab-section-list');
+    var customSkillHelp = {
+      key: 'Stable machine-readable skill id. Use lowercase kebab-case. Example: renewal-risk-review.',
+      title: 'Human-friendly skill name shown in Persona Studio. Example: Renewal Risk Review.',
+      summary: 'One sentence describing when this skill applies. Example: Use when assessing account renewal risks before customer outreach.',
+      content: 'Markdown instructions passed to the persona. Example: include trigger conditions, required checks, and output format bullets.',
+    };
     ensureArray(state.form.customSkills).forEach(function (skill, index) {
       var skillCard = createEl('div', 'persona-lab-skill');
       var skillHeader = createEl('div', 'persona-lab-skill-header');
@@ -2773,7 +2967,7 @@
           skill[field] = input.value;
           updateDirtyState(state);
         });
-        renderFieldGroup(skillCard, field, input);
+        renderFieldGroup(skillCard, field, input, customSkillHelp[field]);
       });
       var contentInput = createEl('textarea', 'persona-lab-textarea');
       contentInput.style.minHeight = '160px';
@@ -2782,7 +2976,7 @@
         skill.content = contentInput.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(skillCard, 'content', contentInput);
+      renderFieldGroup(skillCard, 'content', contentInput, customSkillHelp.content);
       skillList.appendChild(skillCard);
     });
     if (!state.form.customSkills.length) {
