@@ -6,6 +6,8 @@
 
   var GLOBAL_KEY = '__personaLabPluginState';
   var SESSION_LABEL = 'Persona Studio';
+  var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
+  var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
   var TERMINAL_RUN_STATUSES = {
     SUCCEEDED: true,
     FAILED: true,
@@ -243,12 +245,26 @@
     if (!error) return 'Unknown error.';
     if (typeof error === 'string') return error;
     if (error.message) {
+      if (/First-party AI base URL is not configured/i.test(error.message)) {
+        return 'Persona Studio is configured for the ProPaasAI Cloudflare dev control plane. Set `first_party_ai.base_url` in `~/.mcpviews/config.json` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
+      }
       if (
         /127\.0\.0\.1:3000\/admin\/persona-studio\/personas/i.test(error.message) ||
         /failed to connect to 127\.0\.0\.1 port 3000/i.test(error.message) ||
         /error sending request for url \(http:\/\/127\.0\.0\.1:3000/i.test(error.message)
       ) {
-        return 'Persona Studio could not reach the ProPaasAI dev server at http://127.0.0.1:3000. Start `pnpm dev` in the ProPaasAI repo, then refresh this tab.';
+        return 'Persona Studio is still pointed at the old local ProPaasAI API host (' + LOCAL_CONTROL_PLANE_URL + '). Update MCPViews `first_party_ai.base_url` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
+      }
+      if (
+        /dev\.app\.tribexai\.com\/admin\/persona-studio/i.test(error.message) &&
+        /local-only|not deployed in the Cloudflare control plane/i.test(error.message)
+      ) {
+        return 'Persona Studio reached ' + DEV_CONTROL_PLANE_URL + ', but that deployment is still rejecting `/admin/persona-studio/*`. Deploy the Persona Studio API surface from `../ProPaasai` to the Cloudflare dev environment, then refresh this tab.';
+      }
+      if (
+        /HTTP (401|403) from 'https:\/\/dev\.app\.tribexai\.com/i.test(error.message)
+      ) {
+        return 'Persona Studio reached ' + DEV_CONTROL_PLANE_URL + ', but your MCPViews first-party AI session is not authorized. Sign in to the TribeX AI dev environment in MCPViews, then refresh this tab.';
       }
       return error.message;
     }
@@ -581,17 +597,39 @@
   }
 
   function defaultBatchRun(state, index) {
-    var registries = activeRegistries(state);
     return {
       label: 'Run ' + (index + 1),
-      model: state.form && state.form.draft && state.form.draft.modelPolicy
-        ? state.form.draft.modelPolicy.defaultModel || ensureArray(registries.models)[0] || ''
-        : ensureArray(registries.models)[0] || '',
       systemPromptOverride: '',
       messagePromptOverride: '',
       runtimeOverrides: {},
       runtimeOverridesText: '{}',
     };
+  }
+
+  function defaultBatchModelPolicy(state) {
+    var registries = activeRegistries(state);
+    var models = ensureArray(registries.models);
+    var draftPolicy = state.form && state.form.draft && state.form.draft.modelPolicy
+      ? state.form.draft.modelPolicy
+      : {};
+    var defaultModel = draftPolicy.defaultModel || models[0] || '';
+    return {
+      defaultModel: defaultModel,
+      fastModel: draftPolicy.fastModel || models[1] || defaultModel,
+      reasoningModel: draftPolicy.reasoningModel || models[2] || defaultModel,
+    };
+  }
+
+  function summarizeModelPolicy(policy) {
+    policy = ensureObject(policy);
+    if (!policy.defaultModel && !policy.fastModel && !policy.reasoningModel) {
+      return '';
+    }
+    return [
+      'Default: ' + (policy.defaultModel || 'missing'),
+      'Thinking Fast: ' + (policy.fastModel || 'missing'),
+      'Reasoning: ' + (policy.reasoningModel || 'missing'),
+    ].join(' | ');
   }
 
   function createBatchDraft(state, count) {
@@ -602,6 +640,7 @@
     }
     return {
       runCount: runCount,
+      modelPolicyOverride: defaultBatchModelPolicy(state),
       runs: runs,
     };
   }
@@ -631,6 +670,10 @@
       runs.push(defaultBatchRun(state, runs.length));
     }
     state.batchDraft.runCount = runCount;
+    state.batchDraft.modelPolicyOverride = Object.assign(
+      defaultBatchModelPolicy(state),
+      ensureObject(state.batchDraft.modelPolicyOverride)
+    );
     state.batchDraft.runs = runs;
   }
 
@@ -851,7 +894,7 @@
     }
 
     state.saving = true;
-    setStatus(state, 'Saving persona draft to disk...');
+    setStatus(state, 'Saving persona draft...');
     renderState(state);
 
     var payload = clone(state.form);
@@ -868,7 +911,7 @@
         return loadPersona(state, state.selectedPersonaKey);
       })
       .then(function () {
-        setStatus(state, 'Saved to disk.');
+        setStatus(state, 'Saved.');
       })
       .catch(function (error) {
         setError(state, stringifyError(error));
@@ -1316,18 +1359,20 @@
   function buildBatchPayload(state) {
     synchronizeBatchDraftRuns(state);
     var draft = state.batchDraft;
+    var modelPolicyOverride = ensureObject(draft.modelPolicyOverride);
+    ['defaultModel', 'fastModel', 'reasoningModel'].forEach(function (key) {
+      if (!modelPolicyOverride[key]) {
+        throw new Error('Batch model policy must select Default, Thinking Fast, and Reasoning models.');
+      }
+    });
     var runs = ensureArray(draft && draft.runs).map(function (run, index) {
       var runtimeOverrides = parseJsonObject(
         run.runtimeOverridesText || renderJson(ensureObject(run.runtimeOverrides)),
         {},
         'Runtime overrides for run ' + (index + 1)
       );
-      if (!run.model) {
-        throw new Error('Every batch run must select a model before launch.');
-      }
       return {
         label: String(run.label || ('Run ' + (index + 1))).trim(),
-        model: run.model,
         systemPromptOverride: run.systemPromptOverride || '',
         messagePromptOverride: run.messagePromptOverride || '',
         runtimeOverrides: runtimeOverrides,
@@ -1341,6 +1386,11 @@
         enabled: true,
         mode: 'manual',
         transcriptSource: 'full',
+      },
+      modelPolicyOverride: {
+        defaultModel: modelPolicyOverride.defaultModel,
+        fastModel: modelPolicyOverride.fastModel,
+        reasoningModel: modelPolicyOverride.reasoningModel,
       },
       runs: runs,
     };
@@ -2023,10 +2073,10 @@
     headerCopy.appendChild(createEl('div', 'persona-lab-run-eyebrow', 'Batch run ' + (index + 1)));
     headerCopy.appendChild(createEl('strong', null, run.label || ('Run ' + (index + 1))));
     var subtitle = createEl('div', 'persona-lab-run-subtitle');
-    var modelChip = createEl('div', 'persona-lab-chip');
-    modelChip.appendChild(createEl('span', 'persona-lab-chip-label', 'Model'));
-    modelChip.appendChild(createEl('span', null, run.model || 'No model'));
-    subtitle.appendChild(modelChip);
+    var policyChip = createEl('div', 'persona-lab-chip');
+    policyChip.appendChild(createEl('span', 'persona-lab-chip-label', 'Models'));
+    policyChip.appendChild(createEl('span', null, 'Batch policy'));
+    subtitle.appendChild(policyChip);
     if (run.threadId) {
       var threadChip = createEl('div', 'persona-lab-chip');
       threadChip.appendChild(createEl('span', 'persona-lab-chip-label', 'Thread'));
@@ -2286,10 +2336,47 @@
         createEl(
           'div',
           'persona-lab-helper',
-          'Use this for model bakeoffs, prompt A/B tests, or mixed experiments.'
+          'Use this for thinking-class model policy tests, prompt A/B tests, or mixed experiments.'
         )
       );
       body.appendChild(countPanel);
+      var modelPolicyPanel = createEl('section', 'persona-lab-panel');
+      modelPolicyPanel.appendChild(createEl('h3', null, 'Batch model policy'));
+      modelPolicyPanel.appendChild(
+        createEl(
+          'p',
+          null,
+          'These model choices apply to every run in this batch. Runtime routing still chooses the Default, Thinking Fast, or Reasoning class for each turn.'
+        )
+      );
+      var policyGrid = createEl('div', 'persona-lab-grid');
+      state.batchDraft.modelPolicyOverride = Object.assign(
+        defaultBatchModelPolicy(state),
+        ensureObject(state.batchDraft.modelPolicyOverride)
+      );
+      renderFieldGroup(
+        policyGrid,
+        'Default model',
+        buildModelSelect(registries, state.batchDraft.modelPolicyOverride.defaultModel, function (value) {
+          state.batchDraft.modelPolicyOverride.defaultModel = value;
+        }, false)
+      );
+      renderFieldGroup(
+        policyGrid,
+        'Thinking Fast model',
+        buildModelSelect(registries, state.batchDraft.modelPolicyOverride.fastModel, function (value) {
+          state.batchDraft.modelPolicyOverride.fastModel = value;
+        }, false)
+      );
+      renderFieldGroup(
+        policyGrid,
+        'Reasoning model',
+        buildModelSelect(registries, state.batchDraft.modelPolicyOverride.reasoningModel, function (value) {
+          state.batchDraft.modelPolicyOverride.reasoningModel = value;
+        }, false)
+      );
+      modelPolicyPanel.appendChild(policyGrid);
+      body.appendChild(modelPolicyPanel);
     } else if (state.batchWizardStep === 2) {
       var runsPanel = createEl('section', 'persona-lab-panel');
       runsPanel.appendChild(createEl('h3', null, 'Configure each run'));
@@ -2297,7 +2384,7 @@
         createEl(
           'p',
           null,
-          'Each run can override model and prompt content while inheriting the saved persona draft as its baseline.'
+          'Each run can override prompt content and runtime settings while inheriting the shared batch model policy.'
         )
       );
       var runGrid = createEl('div', 'persona-lab-run-grid');
@@ -2316,14 +2403,6 @@
           run.label = labelInput.value;
         });
         renderFieldGroup(runCard, 'Label', labelInput);
-
-        renderFieldGroup(
-          runCard,
-          'Model',
-          buildModelSelect(registries, run.model || '', function (value) {
-            run.model = value;
-          }, false)
-        );
 
         var systemInput = createEl('textarea', 'persona-lab-textarea');
         systemInput.value = run.systemPromptOverride || '';
@@ -2372,7 +2451,18 @@
           'This batch will be saved as a reusable evaluation record with linked test runs, thread IDs, and future summary scaffolding.'
         )
       );
+      var policy = ensureObject(state.batchDraft.modelPolicyOverride);
+      var policySummary = createEl('div', 'persona-lab-review-item');
+      policySummary.appendChild(createEl('strong', null, 'Batch model policy'));
+      policySummary.appendChild(
+        createEl(
+          'p',
+          null,
+          summarizeModelPolicy(policy)
+        )
+      );
       var reviewList = createEl('div', 'persona-lab-review-list');
+      reviewList.appendChild(policySummary);
       state.batchDraft.runs.forEach(function (run, index) {
         var item = createEl('div', 'persona-lab-review-item');
         item.appendChild(createEl('strong', null, run.label || ('Run ' + (index + 1))));
@@ -2381,7 +2471,6 @@
             'p',
             null,
             [
-              'Model: ' + (run.model || 'missing'),
               'System prompt: ' + (run.systemPromptOverride ? 'override' : 'inherit'),
               'Message prompt: ' + (run.messagePromptOverride ? 'override' : 'none'),
             ].join(' • ')
@@ -2508,15 +2597,26 @@
     }
 
     var metricsSummary = metricsSummaryOf(run) || metricsSummaryOf(state.runDetailPayload.diagnostics);
+    var runDiagnostics = ensureObject(run.diagnostics);
+    var batchPolicySummary = summarizeModelPolicy(runDiagnostics.batchModelPolicyOverride);
     var summary = createEl('div', 'persona-lab-kv');
-    [
+    var summaryItems = [
       ['Run ID', run.id],
       ['Status', run.status],
       ['Thread', run.threadId],
       ['Started', run.startedAt],
       ['Finished', run.finishedAt || 'In progress'],
-      ['Model', run.batchRunConfig && run.batchRunConfig.model ? run.batchRunConfig.model : (run.usageSummary && run.usageSummary.model) || '—'],
-    ].forEach(function (entry) {
+      [
+        'Selected model',
+        run.usageSummary && run.usageSummary.modelRouting && run.usageSummary.modelRouting.selectedModel
+          ? run.usageSummary.modelRouting.selectedModel
+          : (run.usageSummary && run.usageSummary.model) || '—',
+      ],
+    ];
+    if (batchPolicySummary) {
+      summaryItems.push(['Batch model policy', batchPolicySummary]);
+    }
+    summaryItems.forEach(function (entry) {
       var card = createEl('div', 'persona-lab-kv-item');
       card.appendChild(createEl('span', null, entry[0]));
       card.appendChild(createEl('strong', null, String(entry[1] || '—')));
@@ -2567,7 +2667,7 @@
       createEl(
         'p',
         null,
-        'Edit the file-backed persona draft, save it to disk, and launch single or parallel native MCPViews AI chats that test the exact saved configuration.'
+        'Edit the ProPaasAI persona draft through the Cloudflare dev control plane and launch single or parallel native MCPViews AI chats that test the exact saved configuration.'
       )
     );
     toolbar.appendChild(titleCopy);
