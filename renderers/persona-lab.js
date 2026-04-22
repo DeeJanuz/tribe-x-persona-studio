@@ -20,6 +20,7 @@
     CANCELLED: true,
   };
   var BATCH_STORAGE_KEY = '__personaLabBatchState';
+  var modelSelectorSequence = 0;
 
   function getGlobalState() {
     if (!window[GLOBAL_KEY]) {
@@ -146,7 +147,7 @@
       '.persona-lab-button{appearance:none;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,color .15s ease}',
       '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface);transform:translateY(-1px)}',
       '.persona-lab-button.primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-primary-hover));border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(99,102,241,.28)}',
-      '.persona-lab-button:focus-visible,.persona-lab-input:focus-visible,.persona-lab-textarea:focus-visible,.persona-lab-select:focus-visible{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 3px var(--accent-primary-ghost)}',
+      '.persona-lab-button:focus-visible,.persona-lab-input:focus-visible,.persona-lab-textarea:focus-visible,.persona-lab-select:focus-visible,.persona-lab-model-trigger:focus-visible{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 3px var(--accent-primary-ghost)}',
       '.persona-lab-button:disabled{cursor:not-allowed;opacity:.72;transform:none;background:var(--bg-surface-subtle);color:var(--text-tertiary)}',
       '.persona-lab-button.primary:disabled{box-shadow:none}',
       '.persona-lab-status-stack{display:flex;flex-direction:column;gap:10px;max-width:920px}',
@@ -168,6 +169,35 @@
       '.persona-lab-tooltip-popover{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);z-index:5;width:min(320px,calc(100vw - 40px));padding:10px 12px;border-radius:12px;border:1px solid var(--glass-border);background:var(--glass-bg-heavy);box-shadow:var(--glass-shadow-elevated);color:var(--text-secondary);font-size:12px;font-weight:500;line-height:1.45;text-transform:none;letter-spacing:0;text-align:left;white-space:normal;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease}',
       '.persona-lab-tooltip:hover .persona-lab-tooltip-popover,.persona-lab-tooltip:focus-visible .persona-lab-tooltip-popover{opacity:1;transform:translateX(-50%) translateY(0)}',
       '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);color:var(--text-primary)}',
+      '.persona-lab-model-select{position:relative;width:100%}',
+      '.persona-lab-model-trigger{appearance:none;width:100%;min-height:46px;border:1px solid var(--glass-border);border-radius:14px;padding:9px 12px;background:var(--bg-surface-subtle);color:var(--text-primary);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;cursor:pointer;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}',
+      '.persona-lab-model-trigger:hover{border-color:var(--accent-primary);background:var(--bg-surface)}',
+      '.persona-lab-model-trigger:disabled{cursor:not-allowed;opacity:.72;color:var(--text-tertiary)}',
+      '.persona-lab-model-trigger-copy{min-width:0;display:flex;flex-direction:column;gap:3px}',
+      '.persona-lab-model-trigger-label{font-size:13px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}',
+      '.persona-lab-model-trigger-provider{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1.2;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-model-trigger-icon{font-size:14px;color:var(--text-tertiary);transition:transform .15s ease}',
+      '.persona-lab-model-select.open .persona-lab-model-trigger-icon{transform:rotate(180deg)}',
+      '.persona-lab-model-menu{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:20;display:none;max-height:min(420px,48vh);overflow:auto;padding:8px;border:1px solid var(--glass-border);border-radius:16px;background:var(--glass-bg-heavy);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
+      '.persona-lab-model-select.open .persona-lab-model-menu{display:flex;flex-direction:column;gap:6px}',
+      '.persona-lab-model-menu::-webkit-scrollbar{width:8px}',
+      '.persona-lab-model-menu::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
+      '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider-toggle{appearance:none;width:100%;border:1px solid transparent;background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}',
+      '.persona-lab-model-empty,.persona-lab-model-option{border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:3px}',
+      '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
+      '.persona-lab-model-empty.active,.persona-lab-model-option.active{background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 72%),var(--bg-surface)}',
+      '.persona-lab-model-provider{border-radius:14px;background:var(--bg-surface-subtle);overflow:hidden}',
+      '.persona-lab-model-provider-toggle{padding:10px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary)}',
+      '.persona-lab-model-provider-toggle:hover{background:var(--bg-surface)}',
+      '.persona-lab-model-provider-caret{font-size:12px;color:var(--text-tertiary);transition:transform .15s ease}',
+      '.persona-lab-model-provider.expanded .persona-lab-model-provider-caret{transform:rotate(90deg)}',
+      '.persona-lab-model-provider-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-model-provider-count{font-size:11px;color:var(--text-tertiary);font-weight:800}',
+      '.persona-lab-model-provider-options{display:none;padding:0 6px 7px}',
+      '.persona-lab-model-provider.expanded .persona-lab-model-provider-options{display:flex;flex-direction:column;gap:4px}',
+      '.persona-lab-model-option-label{font-size:13px;font-weight:700;line-height:1.3;color:var(--text-primary);overflow-wrap:anywhere}',
+      '.persona-lab-model-option-id{font-size:11px;line-height:1.35;color:var(--text-tertiary);font-family:var(--font-mono);overflow-wrap:anywhere}',
+      '.persona-lab-model-empty .persona-lab-model-option-id{font-family:var(--font-sans)}',
       '.persona-lab-input::placeholder,.persona-lab-textarea::placeholder{color:var(--text-tertiary)}',
       '.persona-lab-textarea{min-height:110px;resize:vertical;line-height:1.55}',
       '.persona-lab-textarea.json{min-height:140px;font-family:var(--font-mono);font-size:12px}',
@@ -236,7 +266,7 @@
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
       '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor{grid-template-columns:1fr}}',
-      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}}',
+      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}}',
     ].join('');
     document.head.appendChild(style);
   }
@@ -530,6 +560,188 @@
       });
     });
     return options;
+  }
+
+  function normalizeModelId(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function providerLabel(provider) {
+    var normalized = normalizeModelId(provider).toLowerCase();
+    var labels = {
+      anthropic: 'Anthropic',
+      cohere: 'Cohere',
+      deepseek: 'DeepSeek',
+      google: 'Google',
+      groq: 'Groq',
+      meta: 'Meta',
+      'meta-llama': 'Meta Llama',
+      microsoft: 'Microsoft',
+      mistralai: 'Mistral AI',
+      moonshotai: 'Moonshot AI',
+      openai: 'OpenAI',
+      openrouter: 'OpenRouter',
+      perplexity: 'Perplexity',
+      qwen: 'Qwen',
+      'x-ai': 'xAI',
+      xai: 'xAI',
+      unknown: 'Unknown',
+    };
+    if (labels[normalized]) return labels[normalized];
+    if (!normalized) return 'Unknown';
+    return normalized
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map(function (part) {
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      })
+      .join(' ') || 'Unknown';
+  }
+
+  function inferModelProvider(modelId) {
+    var id = normalizeModelId(modelId).toLowerCase();
+    var slashIndex = id.indexOf('/');
+    if (slashIndex > 0) return id.slice(0, slashIndex);
+    if (/^(gpt|o[0-9]|chatgpt)/.test(id)) return 'openai';
+    if (/^(claude)/.test(id)) return 'anthropic';
+    if (/^(gemini|palm)/.test(id)) return 'google';
+    if (/^(grok)/.test(id)) return 'x-ai';
+    return 'unknown';
+  }
+
+  function normalizeModelOption(item, fallbackProvider, fallbackProviderLabel) {
+    if (typeof item === 'string') {
+      var stringId = normalizeModelId(item);
+      if (!stringId) return null;
+      var inferredProvider = fallbackProvider || inferModelProvider(stringId);
+      return {
+        id: stringId,
+        label: stringId,
+        provider: inferredProvider,
+        providerLabel: fallbackProviderLabel || providerLabel(inferredProvider),
+      };
+    }
+    if (!item || typeof item !== 'object') return null;
+    var id = normalizeModelId(item.id || item.key || item.model);
+    if (!id) return null;
+    var provider = normalizeModelId(item.provider) || fallbackProvider || inferModelProvider(id);
+    return {
+      id: id,
+      label: String(item.name || item.label || id),
+      provider: provider,
+      providerLabel: String(item.providerLabel || fallbackProviderLabel || providerLabel(provider)),
+    };
+  }
+
+  function collectModelOptions(registries, selectedValue) {
+    var lookup = {};
+    var order = [];
+
+    function add(option) {
+      if (!option || !option.id) return null;
+      if (!lookup[option.id]) {
+        order.push(option.id);
+        lookup[option.id] = option;
+        return option;
+      }
+      var existing = lookup[option.id];
+      lookup[option.id] = Object.assign({}, existing, option);
+      if (
+        existing.label &&
+        existing.label !== existing.id &&
+        (!option.label || option.label === option.id)
+      ) {
+        lookup[option.id].label = existing.label;
+      }
+      return lookup[option.id];
+    }
+
+    ensureArray(registries && registries.modelOptions).forEach(function (item) {
+      add(normalizeModelOption(item));
+    });
+    ensureArray(registries && registries.modelProviderGroups).forEach(function (group) {
+      if (!group || typeof group !== 'object') return;
+      var provider = normalizeModelId(group.provider) || '';
+      var label = group.label ? String(group.label) : providerLabel(provider);
+      ensureArray(group.models).forEach(function (item) {
+        add(normalizeModelOption(item, provider, label));
+      });
+    });
+    ensureArray(registries && registries.models).forEach(function (model) {
+      var id = normalizeModelId(model);
+      if (!id) return;
+      if (!lookup[id]) {
+        add(normalizeModelOption(id));
+      }
+    });
+
+    var selectedId = normalizeModelId(selectedValue);
+    if (selectedId && !lookup[selectedId]) {
+      add({
+        id: selectedId,
+        label: selectedId,
+        provider: inferModelProvider(selectedId),
+        providerLabel: providerLabel(inferModelProvider(selectedId)),
+      });
+    }
+
+    return {
+      lookup: lookup,
+      order: order,
+    };
+  }
+
+  function buildModelGroups(registries, selectedValue) {
+    var collected = collectModelOptions(registries || {}, selectedValue);
+    var groupedIds = {};
+    var groups = [];
+
+    function addGroup(provider, label, models) {
+      var entries = [];
+      ensureArray(models).forEach(function (model) {
+        var option = typeof model === 'string'
+          ? collected.lookup[model] || normalizeModelOption(model, provider, label)
+          : normalizeModelOption(model, provider, label);
+        if (!option || groupedIds[option.id]) return;
+        groupedIds[option.id] = true;
+        collected.lookup[option.id] = Object.assign({}, collected.lookup[option.id] || {}, option);
+        entries.push(collected.lookup[option.id]);
+      });
+      if (entries.length > 0) {
+        groups.push({
+          provider: provider || 'unknown',
+          label: label || providerLabel(provider),
+          models: entries,
+        });
+      }
+    }
+
+    ensureArray(registries && registries.modelProviderGroups).forEach(function (group) {
+      if (!group || typeof group !== 'object') return;
+      var provider = normalizeModelId(group.provider) || 'unknown';
+      addGroup(provider, String(group.label || providerLabel(provider)), group.models);
+    });
+
+    collected.order.forEach(function (id) {
+      if (groupedIds[id]) return;
+      var option = collected.lookup[id];
+      var provider = option && option.provider ? option.provider : inferModelProvider(id);
+      var existing = groups.filter(function (group) {
+        return group.provider === provider;
+      })[0];
+      if (existing) {
+        existing.models.push(option);
+      } else {
+        groups.push({
+          provider: provider,
+          label: option && option.providerLabel ? option.providerLabel : providerLabel(provider),
+          models: [option],
+        });
+      }
+      groupedIds[id] = true;
+    });
+
+    return groups;
   }
 
   function parseWorkflowModels(raw) {
@@ -1742,24 +1954,204 @@
   }
 
   function buildModelSelect(registries, selectedValue, onChange, allowEmpty) {
-    var select = createEl('select', 'persona-lab-select');
-    if (allowEmpty !== false) {
-      var emptyOption = document.createElement('option');
-      emptyOption.value = '';
-      emptyOption.textContent = 'None';
-      select.appendChild(emptyOption);
+    var currentValue = normalizeModelId(selectedValue);
+    var groups = buildModelGroups(registries || {}, currentValue);
+    var allOptions = [];
+    var optionButtons = {};
+    var emptyButton = null;
+    var selectorId = 'persona-lab-model-menu-' + (++modelSelectorSequence);
+    var root = createEl('div', 'persona-lab-model-select');
+    var trigger = createEl('button', 'persona-lab-model-trigger');
+    var triggerCopy = createEl('span', 'persona-lab-model-trigger-copy');
+    var triggerLabel = createEl('span', 'persona-lab-model-trigger-label');
+    var triggerProvider = createEl('span', 'persona-lab-model-trigger-provider');
+    var triggerIcon = createEl('span', 'persona-lab-model-trigger-icon', 'v');
+    var menu = createEl('div', 'persona-lab-model-menu');
+
+    groups.forEach(function (group) {
+      ensureArray(group.models).forEach(function (option) {
+        if (option && option.id) allOptions.push(option);
+      });
+    });
+
+    trigger.type = 'button';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-controls', selectorId);
+    triggerCopy.appendChild(triggerLabel);
+    triggerCopy.appendChild(triggerProvider);
+    trigger.appendChild(triggerCopy);
+    trigger.appendChild(triggerIcon);
+
+    menu.id = selectorId;
+    menu.setAttribute('role', 'listbox');
+
+    function selectedOption() {
+      return allOptions.filter(function (option) {
+        return option.id === currentValue;
+      })[0] || null;
     }
-    ensureArray(registries.models).forEach(function (model) {
-      var option = document.createElement('option');
-      option.value = model;
-      option.textContent = model;
-      if (model === selectedValue) option.selected = true;
-      select.appendChild(option);
+
+    function updateTrigger() {
+      var option = selectedOption();
+      if (!currentValue && allowEmpty !== false) {
+        triggerLabel.textContent = 'None';
+        triggerProvider.textContent = 'No model override';
+      } else if (option) {
+        triggerLabel.textContent = option.label || option.id;
+        triggerProvider.textContent = option.providerLabel || providerLabel(option.provider);
+      } else if (currentValue) {
+        triggerLabel.textContent = currentValue;
+        triggerProvider.textContent = providerLabel(inferModelProvider(currentValue));
+      } else {
+        triggerLabel.textContent = 'No models available';
+        triggerProvider.textContent = 'Registry is empty';
+      }
+      trigger.disabled = allOptions.length === 0 && allowEmpty === false;
+    }
+
+    function updateActiveOptions() {
+      Object.keys(optionButtons).forEach(function (value) {
+        var button = optionButtons[value];
+        var isSelected = value === currentValue;
+        button.classList.toggle('active', isSelected);
+        button.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      });
+      if (emptyButton) {
+        var emptySelected = !currentValue;
+        emptyButton.classList.toggle('active', emptySelected);
+        emptyButton.setAttribute('aria-selected', emptySelected ? 'true' : 'false');
+      }
+    }
+
+    function closeMenu() {
+      root.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('click', handleDocumentClick);
+    }
+
+    function openMenu() {
+      root.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+      document.addEventListener('click', handleDocumentClick);
+    }
+
+    function toggleMenu() {
+      if (root.classList.contains('open')) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    }
+
+    function handleDocumentClick(event) {
+      if (!document.body.contains(root) || !root.contains(event.target)) {
+        closeMenu();
+      }
+    }
+
+    function selectValue(value) {
+      var nextValue = normalizeModelId(value);
+      if (nextValue === currentValue) {
+        closeMenu();
+        return;
+      }
+      currentValue = nextValue;
+      updateTrigger();
+      updateActiveOptions();
+      onChange(currentValue);
+      closeMenu();
+    }
+
+    function setProviderExpanded(providerEl, expanded) {
+      providerEl.classList.toggle('expanded', expanded);
+      var toggle = providerEl.querySelector('.persona-lab-model-provider-toggle');
+      if (toggle) toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+
+    if (allowEmpty !== false) {
+      emptyButton = createEl('button', 'persona-lab-model-empty');
+      emptyButton.type = 'button';
+      emptyButton.setAttribute('role', 'option');
+      emptyButton.appendChild(createEl('span', 'persona-lab-model-option-label', 'None'));
+      emptyButton.appendChild(createEl('span', 'persona-lab-model-option-id', 'No model override'));
+      emptyButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        selectValue('');
+      });
+      menu.appendChild(emptyButton);
+    }
+
+    groups.forEach(function (group, groupIndex) {
+      var providerEl = createEl('div', 'persona-lab-model-provider');
+      var providerToggle = createEl('button', 'persona-lab-model-provider-toggle');
+      var caret = createEl('span', 'persona-lab-model-provider-caret', '>');
+      var name = createEl('span', 'persona-lab-model-provider-name', group.label || providerLabel(group.provider));
+      var count = createEl('span', 'persona-lab-model-provider-count', String(ensureArray(group.models).length));
+      var optionsEl = createEl('div', 'persona-lab-model-provider-options');
+      var containsSelected = ensureArray(group.models).some(function (option) {
+        return option && option.id === currentValue;
+      });
+
+      providerToggle.type = 'button';
+      providerToggle.setAttribute('aria-expanded', 'false');
+      providerToggle.appendChild(caret);
+      providerToggle.appendChild(name);
+      providerToggle.appendChild(count);
+      providerToggle.addEventListener('click', function (event) {
+        event.stopPropagation();
+        setProviderExpanded(providerEl, !providerEl.classList.contains('expanded'));
+      });
+
+      ensureArray(group.models).forEach(function (option) {
+        if (!option || !option.id) return;
+        var optionButton = createEl('button', 'persona-lab-model-option');
+        optionButton.type = 'button';
+        optionButton.setAttribute('role', 'option');
+        optionButton.setAttribute('data-model-value', option.id);
+        optionButton.appendChild(createEl('span', 'persona-lab-model-option-label', option.label || option.id));
+        optionButton.appendChild(createEl('span', 'persona-lab-model-option-id', option.id));
+        optionButton.addEventListener('click', function (event) {
+          event.stopPropagation();
+          selectValue(option.id);
+        });
+        optionButtons[option.id] = optionButton;
+        optionsEl.appendChild(optionButton);
+      });
+
+      providerEl.appendChild(providerToggle);
+      providerEl.appendChild(optionsEl);
+      menu.appendChild(providerEl);
+      setProviderExpanded(providerEl, containsSelected || (!currentValue && allowEmpty === false && groupIndex === 0));
     });
-    bindInput(select, function () {
-      onChange(select.value);
+
+    trigger.addEventListener('click', function (event) {
+      event.stopPropagation();
+      toggleMenu();
     });
-    return select;
+    trigger.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        openMenu();
+      } else if (event.key === 'Escape') {
+        closeMenu();
+      }
+    });
+    menu.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    menu.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        closeMenu();
+        trigger.focus();
+      }
+    });
+
+    root.appendChild(trigger);
+    root.appendChild(menu);
+    updateTrigger();
+    updateActiveOptions();
+    return root;
   }
 
   function buildChoiceSelect(options, selectedValue, onChange) {
