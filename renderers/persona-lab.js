@@ -1150,6 +1150,7 @@
     var models = modelIdsFromRegistries(registries, '');
     if (models[0]) {
       state.form.draft.modelPolicy.defaultModel = models[0];
+      updateDirtyState(state);
     }
   }
 

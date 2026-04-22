@@ -13,9 +13,9 @@ This document tracks technical debt items identified by the solid-reviewer agent
 
 ## Latest Session Summary
 
-**Last Review:** 2026-04-19 — `ab9f0da` (`Support persona orchestration controls in Persona Lab`)
+**Last Review:** 2026-04-22 — `bb03f58` (`Add model pricing metadata to Persona Studio selector`)
 
-No material SOLID findings were identified in the reviewed plugin commit. Residual risk remains around the companion ProPaasAI registry/API changes that must ship with this renderer update.
+One medium-risk behavioral finding was identified and resolved in the follow-up working tree change: the required default model fallback now marks the editable draft dirty so save-first launches persist the displayed model selection. No structural SOLID violations were identified.
 
 ---
 
@@ -37,4 +37,10 @@ _(none)_
 
 ## Resolved Items
 
-_(none)_
+### MED-001: Required model fallback is not marked dirty before save-first launches
+**Status:** Resolved
+**Found:** 2026-04-22 in `bb03f58`
+**Resolved:** 2026-04-22
+**File:** `renderers/persona-lab.js`
+
+`ensureRequiredModelDefaults` now calls `updateDirtyState` after auto-filling `draft.modelPolicy.defaultModel`, so save-first test launches persist the displayed default model before creating runs.

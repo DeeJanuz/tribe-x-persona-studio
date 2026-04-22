@@ -11,7 +11,7 @@ This repository will hold the plugin-owned implementation for the Tribe-X AI exp
 - Define the plugin boundary between MCPViews core and the closed AI feature set
 - Stand up the plugin repository and planning artifacts
 - Extend Persona Studio into a save-first evaluation workspace for single-run and parallel persona testing
-- Keep Persona Studio aligned with ProPaasAI-provided persona tooling metadata, including orchestration controls and dynamically discovered business tools
+- Keep Persona Studio aligned with ProPaasAI-provided persona tooling metadata, including orchestration controls, dynamically discovered business tools, and priced model catalog choices
 
 ## Initial Scope
 
