@@ -5,9 +5,15 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
+  var RENDERER_VERSION = '2026-04-22-provider-model-selector-v6';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
+  var FALLBACK_PERSONA_STUDIO_MODELS = [
+    'google/gemini-3-flash-preview',
+    'openai/gpt-5-mini',
+    'openai/gpt-5',
+  ];
   var TERMINAL_RUN_STATUSES = {
     SUCCEEDED: true,
     FAILED: true,
@@ -23,8 +29,13 @@
   var modelSelectorSequence = 0;
 
   function getGlobalState() {
-    if (!window[GLOBAL_KEY]) {
+    if (!window[GLOBAL_KEY] || window[GLOBAL_KEY].rendererVersion !== RENDERER_VERSION) {
+      var existingStyle = document.getElementById('parallel-run-workshop-theme');
+      if (existingStyle && existingStyle.parentNode) {
+        existingStyle.parentNode.removeChild(existingStyle);
+      }
       window[GLOBAL_KEY] = {
+        rendererVersion: RENDERER_VERSION,
         sessions: {},
         stylesInjected: false,
       };
@@ -170,6 +181,7 @@
       '.persona-lab-tooltip:hover .persona-lab-tooltip-popover,.persona-lab-tooltip:focus-visible .persona-lab-tooltip-popover{opacity:1;transform:translateX(-50%) translateY(0)}',
       '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);color:var(--text-primary)}',
       '.persona-lab-model-select{position:relative;width:100%}',
+      '.persona-lab-model-select.open{z-index:10002}',
       '.persona-lab-model-trigger{appearance:none;width:100%;min-height:46px;border:1px solid var(--glass-border);border-radius:14px;padding:9px 12px;background:var(--bg-surface-subtle);color:var(--text-primary);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;cursor:pointer;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}',
       '.persona-lab-model-trigger:hover{border-color:var(--accent-primary);background:var(--bg-surface)}',
       '.persona-lab-model-trigger:disabled{cursor:not-allowed;opacity:.72;color:var(--text-tertiary)}',
@@ -178,25 +190,26 @@
       '.persona-lab-model-trigger-provider{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1.2;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.persona-lab-model-trigger-icon{font-size:14px;color:var(--text-tertiary);transition:transform .15s ease}',
       '.persona-lab-model-select.open .persona-lab-model-trigger-icon{transform:rotate(180deg)}',
-      '.persona-lab-model-menu{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:20;display:none;max-height:min(420px,48vh);overflow:auto;padding:8px;border:1px solid var(--glass-border);border-radius:16px;background:var(--glass-bg-heavy);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
+      '.persona-lab-model-menu{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:10003;display:none;max-height:min(420px,48vh);overflow:auto;padding:8px;border:1px solid var(--glass-border);border-radius:16px;background:var(--bg-app);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight);scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
       '.persona-lab-model-select.open .persona-lab-model-menu{display:flex;flex-direction:column;gap:6px}',
       '.persona-lab-model-menu::-webkit-scrollbar{width:8px}',
       '.persona-lab-model-menu::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
       '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider-toggle{appearance:none;width:100%;border:1px solid transparent;background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}',
-      '.persona-lab-model-empty,.persona-lab-model-option{border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:3px}',
+      '.persona-lab-model-empty,.persona-lab-model-option{border-radius:12px;padding:9px 10px;display:flex;flex:0 0 auto;flex-direction:column;gap:3px}',
       '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
       '.persona-lab-model-empty.active,.persona-lab-model-option.active{background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 72%),var(--bg-surface)}',
-      '.persona-lab-model-provider{border-radius:14px;background:var(--bg-surface-subtle);overflow:hidden}',
-      '.persona-lab-model-provider-toggle{padding:10px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary)}',
+      '.persona-lab-model-provider{flex:0 0 auto;border-radius:14px;background:var(--bg-surface-subtle);overflow:hidden}',
+      '.persona-lab-model-provider-toggle{padding:10px;display:grid;flex:0 0 auto;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary)}',
       '.persona-lab-model-provider-toggle:hover{background:var(--bg-surface)}',
       '.persona-lab-model-provider-caret{font-size:12px;color:var(--text-tertiary);transition:transform .15s ease}',
       '.persona-lab-model-provider.expanded .persona-lab-model-provider-caret{transform:rotate(90deg)}',
       '.persona-lab-model-provider-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.persona-lab-model-provider-count{font-size:11px;color:var(--text-tertiary);font-weight:800}',
       '.persona-lab-model-provider-options{display:none;padding:0 6px 7px}',
-      '.persona-lab-model-provider.expanded .persona-lab-model-provider-options{display:flex;flex-direction:column;gap:4px}',
+      '.persona-lab-model-provider.expanded .persona-lab-model-provider-options{display:flex;flex:0 0 auto;flex-direction:column;gap:4px}',
       '.persona-lab-model-option-label{font-size:13px;font-weight:700;line-height:1.3;color:var(--text-primary);overflow-wrap:anywhere}',
       '.persona-lab-model-option-id{font-size:11px;line-height:1.35;color:var(--text-tertiary);font-family:var(--font-mono);overflow-wrap:anywhere}',
+      '.persona-lab-model-price{font-size:11px;line-height:1.35;color:var(--text-secondary);overflow-wrap:anywhere}',
       '.persona-lab-model-empty .persona-lab-model-option-id{font-family:var(--font-sans)}',
       '.persona-lab-input::placeholder,.persona-lab-textarea::placeholder{color:var(--text-tertiary)}',
       '.persona-lab-textarea{min-height:110px;resize:vertical;line-height:1.55}',
@@ -609,6 +622,46 @@
     return 'unknown';
   }
 
+  function normalizeTokenPrice(value) {
+    var numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+  }
+
+  function modelTokenPrice(item, directKeys, pricingKey) {
+    if (!item || typeof item !== 'object') return null;
+    for (var index = 0; index < directKeys.length; index += 1) {
+      if (item[directKeys[index]] !== undefined && item[directKeys[index]] !== null) {
+        return normalizeTokenPrice(item[directKeys[index]]);
+      }
+    }
+    if (item.pricing && typeof item.pricing === 'object') {
+      return normalizeTokenPrice(item.pricing[pricingKey]);
+    }
+    return null;
+  }
+
+  function formatUsdPerMillionTokens(price) {
+    if (price === null || price === undefined || !Number.isFinite(Number(price))) return '';
+    var perMillion = Number(price) * 1000000;
+    if (perMillion === 0) return '$0/M';
+    if (perMillion < 0.01) return '$' + perMillion.toFixed(4) + '/M';
+    if (perMillion < 1) return '$' + perMillion.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') + '/M';
+    return '$' + perMillion.toFixed(2).replace(/\.00$/, '') + '/M';
+  }
+
+  function modelPriceLabel(option) {
+    if (!option) return '';
+    var input = formatUsdPerMillionTokens(option.inputTokenPriceUsd);
+    var output = formatUsdPerMillionTokens(option.outputTokenPriceUsd);
+    if (input && output) {
+      if (input === '$0/M' && output === '$0/M') return 'Free';
+      return 'In ' + input + ' · Out ' + output;
+    }
+    if (input) return 'In ' + input;
+    if (output) return 'Out ' + output;
+    return '';
+  }
+
   function normalizeModelOption(item, fallbackProvider, fallbackProviderLabel) {
     if (typeof item === 'string') {
       var stringId = normalizeModelId(item);
@@ -622,14 +675,26 @@
       };
     }
     if (!item || typeof item !== 'object') return null;
-    var id = normalizeModelId(item.id || item.key || item.model);
+    var id = normalizeModelId(item.id || item.value || item.key || item.model || item.modelId || item.slug);
     if (!id) return null;
-    var provider = normalizeModelId(item.provider) || fallbackProvider || inferModelProvider(id);
+    var provider = normalizeModelId(item.provider || item.providerId || item.providerKey)
+      || fallbackProvider
+      || inferModelProvider(id);
     return {
       id: id,
-      label: String(item.name || item.label || id),
+      label: String(item.name || item.label || item.displayName || item.title || id),
       provider: provider,
       providerLabel: String(item.providerLabel || fallbackProviderLabel || providerLabel(provider)),
+      inputTokenPriceUsd: modelTokenPrice(
+        item,
+        ['inputTokenPriceUsd', 'inputPriceUsd', 'promptTokenPriceUsd', 'promptPriceUsd'],
+        'prompt'
+      ),
+      outputTokenPriceUsd: modelTokenPrice(
+        item,
+        ['outputTokenPriceUsd', 'outputPriceUsd', 'completionTokenPriceUsd', 'completionPriceUsd'],
+        'completion'
+      ),
     };
   }
 
@@ -656,9 +721,50 @@
       return lookup[option.id];
     }
 
-    ensureArray(registries && registries.modelOptions).forEach(function (item) {
-      add(normalizeModelOption(item));
-    });
+    function addModelCollection(collection, fallbackProvider, fallbackProviderLabel) {
+      if (Array.isArray(collection)) {
+        collection.forEach(function (item) {
+          add(normalizeModelOption(item, fallbackProvider, fallbackProviderLabel));
+        });
+        return;
+      }
+      if (!collection || typeof collection !== 'object') return;
+      ['models', 'modelOptions', 'options', 'items'].forEach(function (key) {
+        if (Array.isArray(collection[key])) {
+          addModelCollection(collection[key], fallbackProvider, fallbackProviderLabel);
+        }
+      });
+      Object.keys(collection).forEach(function (key) {
+        if (['models', 'modelOptions', 'options', 'items'].indexOf(key) >= 0) return;
+        if (!Array.isArray(collection[key])) return;
+        addModelCollection(collection[key], key, providerLabel(key));
+      });
+      Object.keys(collection).forEach(function (key) {
+        var value = collection[key];
+        if (['models', 'modelOptions', 'options', 'items'].indexOf(key) >= 0) return;
+        if (Array.isArray(value)) return;
+        if (value && typeof value === 'object') {
+          if (
+            Array.isArray(value.models)
+            || Array.isArray(value.modelOptions)
+            || Array.isArray(value.options)
+            || Array.isArray(value.items)
+          ) {
+            addModelCollection(value, key, providerLabel(key));
+            return;
+          }
+          add(normalizeModelOption(
+            Object.assign({}, value, { id: normalizeModelId(value.id || value.value || value.key || value.model) || key }),
+            fallbackProvider,
+            fallbackProviderLabel
+          ));
+        } else if (typeof value === 'string') {
+          add(normalizeModelOption({ id: key, label: value }, fallbackProvider, fallbackProviderLabel));
+        }
+      });
+    }
+
+    addModelCollection(registries && registries.modelOptions);
     ensureArray(registries && registries.modelProviderGroups).forEach(function (group) {
       if (!group || typeof group !== 'object') return;
       var provider = normalizeModelId(group.provider) || '';
@@ -667,13 +773,7 @@
         add(normalizeModelOption(item, provider, label));
       });
     });
-    ensureArray(registries && registries.models).forEach(function (model) {
-      var id = normalizeModelId(model);
-      if (!id) return;
-      if (!lookup[id]) {
-        add(normalizeModelOption(id));
-      }
-    });
+    addModelCollection(registries && registries.models);
 
     var selectedId = normalizeModelId(selectedValue);
     if (selectedId && !lookup[selectedId]) {
@@ -696,6 +796,12 @@
     var groupedIds = {};
     var groups = [];
 
+    function compareModelOptions(left, right) {
+      var leftLabel = String((left && left.label) || (left && left.id) || '');
+      var rightLabel = String((right && right.label) || (right && right.id) || '');
+      return leftLabel.localeCompare(rightLabel) || String(left && left.id || '').localeCompare(String(right && right.id || ''));
+    }
+
     function addGroup(provider, label, models) {
       var entries = [];
       ensureArray(models).forEach(function (model) {
@@ -711,7 +817,7 @@
         groups.push({
           provider: provider || 'unknown',
           label: label || providerLabel(provider),
-          models: entries,
+          models: entries.sort(compareModelOptions),
         });
       }
     }
@@ -741,7 +847,26 @@
       groupedIds[id] = true;
     });
 
-    return groups;
+    groups.forEach(function (group) {
+      group.models = ensureArray(group.models).sort(compareModelOptions);
+    });
+    return groups.sort(function (left, right) {
+      return String(left.label || '').localeCompare(String(right.label || ''))
+        || String(left.provider || '').localeCompare(String(right.provider || ''));
+    });
+  }
+
+  function modelIdsFromRegistries(registries, selectedValue) {
+    var ids = [];
+    var seen = {};
+    buildModelGroups(registries || {}, selectedValue).forEach(function (group) {
+      ensureArray(group.models).forEach(function (option) {
+        if (!option || !option.id || seen[option.id]) return;
+        seen[option.id] = true;
+        ids.push(option.id);
+      });
+    });
+    return ids;
   }
 
   function parseWorkflowModels(raw) {
@@ -820,10 +945,10 @@
 
   function defaultBatchModelPolicy(state) {
     var registries = activeRegistries(state);
-    var models = ensureArray(registries.models);
     var draftPolicy = state.form && state.form.draft && state.form.draft.modelPolicy
       ? state.form.draft.modelPolicy
       : {};
+    var models = modelIdsFromRegistries(registries, draftPolicy.defaultModel);
     var defaultModel = draftPolicy.defaultModel || models[0] || '';
     return {
       defaultModel: defaultModel,
@@ -992,10 +1117,11 @@
   }
 
   function activeRegistries(state) {
-    return state.registries || {
+    var source = ensureObject(state.registries);
+    var registries = Object.assign({
       builtInSkills: [],
       workflows: [],
-      models: [],
+      models: FALLBACK_PERSONA_STUDIO_MODELS.slice(),
       toolRegistry: {
         businessTools: [],
         businessToolOptions: [],
@@ -1004,7 +1130,27 @@
         reservedCoreTools: [],
       },
       orchestration: null,
-    };
+    }, source);
+    if (!modelIdsFromRegistries(registries, '').length) {
+      registries.models = FALLBACK_PERSONA_STUDIO_MODELS.slice();
+    }
+    registries.toolRegistry = Object.assign({
+      businessTools: [],
+      businessToolOptions: [],
+      connectors: [],
+      connectorOptions: [],
+      reservedCoreTools: [],
+    }, ensureObject(registries.toolRegistry));
+    return registries;
+  }
+
+  function ensureRequiredModelDefaults(state, registries) {
+    if (!state.form || !state.form.draft || !state.form.draft.modelPolicy) return;
+    if (state.form.draft.modelPolicy.defaultModel) return;
+    var models = modelIdsFromRegistries(registries, '');
+    if (models[0]) {
+      state.form.draft.modelPolicy.defaultModel = models[0];
+    }
   }
 
   function fetchBootstrap(state) {
@@ -1973,6 +2119,9 @@
         if (option && option.id) allOptions.push(option);
       });
     });
+    if (!currentValue && allowEmpty === false && allOptions[0]) {
+      currentValue = allOptions[0].id;
+    }
 
     trigger.type = 'button';
     trigger.setAttribute('aria-haspopup', 'listbox');
@@ -1998,8 +2147,10 @@
         triggerLabel.textContent = 'None';
         triggerProvider.textContent = 'No model override';
       } else if (option) {
+        var priceLabel = modelPriceLabel(option);
         triggerLabel.textContent = option.label || option.id;
-        triggerProvider.textContent = option.providerLabel || providerLabel(option.provider);
+        triggerProvider.textContent = (option.providerLabel || providerLabel(option.provider))
+          + (priceLabel ? ' · ' + priceLabel : '');
       } else if (currentValue) {
         triggerLabel.textContent = currentValue;
         triggerProvider.textContent = providerLabel(inferModelProvider(currentValue));
@@ -2111,6 +2262,10 @@
         optionButton.setAttribute('data-model-value', option.id);
         optionButton.appendChild(createEl('span', 'persona-lab-model-option-label', option.label || option.id));
         optionButton.appendChild(createEl('span', 'persona-lab-model-option-id', option.id));
+        var optionPrice = modelPriceLabel(option);
+        if (optionPrice) {
+          optionButton.appendChild(createEl('span', 'persona-lab-model-price', optionPrice));
+        }
         optionButton.addEventListener('click', function (event) {
           event.stopPropagation();
           selectValue(option.id);
@@ -2122,7 +2277,7 @@
       providerEl.appendChild(providerToggle);
       providerEl.appendChild(optionsEl);
       menu.appendChild(providerEl);
-      setProviderExpanded(providerEl, containsSelected || (!currentValue && allowEmpty === false && groupIndex === 0));
+      setProviderExpanded(providerEl, containsSelected || (!currentValue && groupIndex === 0));
     });
 
     trigger.addEventListener('click', function (event) {
@@ -3123,6 +3278,7 @@
     }
 
     var registries = activeRegistries(state);
+    ensureRequiredModelDefaults(state, registries);
 
     var identity = createEl('section', 'persona-lab-panel');
     identity.appendChild(createEl('h2', null, 'Identity'));
@@ -3196,7 +3352,7 @@
       buildModelSelect(registries, state.form.draft.modelPolicy.defaultModel, function (value) {
         state.form.draft.modelPolicy.defaultModel = value;
         updateDirtyState(state);
-      })
+      }, false)
     );
     renderFieldGroup(
       policyGrid,
