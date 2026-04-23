@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-04-22-provider-model-selector-v6';
+  var RENDERER_VERSION = '2026-04-23-persona-archive-controls-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -67,6 +67,7 @@
         loading: false,
         bootstrapLoaded: false,
         bootstrapPromise: null,
+        showArchivedPersonas: false,
         personas: [],
         registries: null,
         selectedPersonaKey: null,
@@ -78,6 +79,7 @@
         status: '',
         error: '',
         saving: false,
+        archivingPersona: false,
         testing: false,
         lastRunId: null,
         runDetails: null,
@@ -132,19 +134,24 @@
       '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
       '.persona-lab-nav{padding:18px;display:flex;flex-direction:column;gap:14px;min-height:0;background:linear-gradient(180deg,rgba(129,140,248,0.16),transparent 240px),var(--glass-bg-heavy)}',
       '.persona-lab-nav-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
+      '.persona-lab-nav-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}',
       '.persona-lab-nav-title{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
       '.persona-lab-nav-header strong{display:block;margin-top:4px;font-size:18px;line-height:1.2}',
+      '.persona-lab-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary);font-size:12px;font-weight:700;line-height:1.3;user-select:none}',
+      '.persona-lab-toggle input{width:16px;height:16px;accent-color:var(--accent-primary);cursor:pointer}',
       '.persona-lab-nav-list{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
       '.persona-lab-nav-list::-webkit-scrollbar,.persona-lab-content::-webkit-scrollbar,.persona-lab-modal::-webkit-scrollbar,.persona-lab-drawer-body::-webkit-scrollbar{width:8px;height:8px}',
       '.persona-lab-nav-list::-webkit-scrollbar-thumb,.persona-lab-content::-webkit-scrollbar-thumb,.persona-lab-modal::-webkit-scrollbar-thumb,.persona-lab-drawer-body::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
       '.persona-lab-nav-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);cursor:pointer;display:flex;flex-direction:column;gap:7px;color:var(--text-primary);text-align:left;transition:border-color .15s ease,transform .15s ease,background .15s ease;animation:persona-lab-stagger-fade-in .24s ease both}',
       '.persona-lab-nav-item:hover{border-color:var(--accent-primary);background:var(--bg-surface)}',
       '.persona-lab-nav-item.active{border-color:var(--accent-primary);background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 55%),var(--bg-surface);transform:translateY(-1px)}',
+      '.persona-lab-nav-item.archived{opacity:.72}',
       '.persona-lab-nav-item code{font-size:11px;color:var(--text-tertiary)}',
       '.persona-lab-nav-item-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;font-size:14px;line-height:1.35}',
       '.persona-lab-nav-item-meta{display:flex;flex-wrap:wrap;gap:6px}',
       '.persona-lab-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid transparent;background:var(--bg-surface);color:var(--text-secondary);font-size:11px;font-weight:600;line-height:1.2}',
       '.persona-lab-badge.dirty{background:var(--color-warning-bg);color:var(--color-warning-text)}',
+      '.persona-lab-badge.archived{background:var(--color-warning-bg);color:var(--color-warning-text)}',
       '.persona-lab-badge.status-succeeded,.persona-lab-badge.status-completed{background:var(--color-success-bg);color:var(--color-success-text)}',
       '.persona-lab-badge.status-running,.persona-lab-badge.status-pending,.persona-lab-badge.status-created{background:var(--color-info-bg);color:var(--color-info-text)}',
       '.persona-lab-badge.status-failed,.persona-lab-badge.status-cancelled,.persona-lab-badge.status-partial_failed{background:var(--color-error-bg);color:var(--color-error-text)}',
@@ -158,6 +165,7 @@
       '.persona-lab-button{appearance:none;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,color .15s ease}',
       '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface);transform:translateY(-1px)}',
       '.persona-lab-button.primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-primary-hover));border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(99,102,241,.28)}',
+      '.persona-lab-button.danger{background:var(--color-error-bg);border-color:rgba(239,68,68,.25);color:var(--color-error-text)}',
       '.persona-lab-button:focus-visible,.persona-lab-input:focus-visible,.persona-lab-textarea:focus-visible,.persona-lab-select:focus-visible,.persona-lab-model-trigger:focus-visible{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 3px var(--accent-primary-ghost)}',
       '.persona-lab-button:disabled{cursor:not-allowed;opacity:.72;transform:none;background:var(--bg-surface-subtle);color:var(--text-tertiary)}',
       '.persona-lab-button.primary:disabled{box-shadow:none}',
@@ -1154,22 +1162,57 @@
     }
   }
 
+  function personaListQuery(state) {
+    return state.showArchivedPersonas ? { includeArchived: 'true' } : null;
+  }
+
+  function currentPersonaDefinition(state) {
+    return state.current && state.current.document
+      ? ensureObject(state.current.document.definition)
+      : {};
+  }
+
+  function isCurrentPersonaArchived(state) {
+    var definition = currentPersonaDefinition(state);
+    return definition.status === 'ARCHIVED' || Boolean(definition.archivedAt);
+  }
+
+  function applyBootstrapPayload(state, payload) {
+    state.personas = ensureArray(payload && payload.personas);
+    state.registries = payload && payload.registries ? payload.registries : state.registries;
+    state.bootstrapLoaded = true;
+    if (
+      state.selectedPersonaKey &&
+      !state.personas.some(function (persona) {
+        return persona && persona.key === state.selectedPersonaKey;
+      })
+    ) {
+      state.selectedPersonaKey = state.personas.length > 0 ? state.personas[0].key : null;
+    }
+    if (!state.selectedPersonaKey && state.personas.length > 0) {
+      state.selectedPersonaKey = state.personas[0].key;
+    }
+  }
+
   function fetchBootstrap(state) {
     if (state.bootstrapPromise) {
       return state.bootstrapPromise;
     }
     state.loading = true;
-    state.bootstrapPromise = request('GET', '/admin/persona-studio/personas')
+    state.bootstrapPromise = request(
+      'GET',
+      '/admin/persona-studio/personas',
+      null,
+      personaListQuery(state)
+    )
       .then(function (payload) {
-        state.personas = ensureArray(payload.personas);
-        state.registries = payload.registries || null;
-        state.bootstrapLoaded = true;
-        if (!state.selectedPersonaKey && state.personas.length > 0) {
-          state.selectedPersonaKey = state.personas[0].key;
-        }
+        applyBootstrapPayload(state, payload);
         if (state.selectedPersonaKey) {
           return loadPersona(state, state.selectedPersonaKey);
         }
+        state.current = null;
+        state.form = null;
+        state.dirty = false;
         return null;
       })
       .catch(function (error) {
@@ -1230,12 +1273,27 @@
   }
 
   function refreshBootstrapAndPersona(state, personaKey) {
-    return request('GET', '/admin/persona-studio/personas')
+    return request(
+      'GET',
+      '/admin/persona-studio/personas',
+      null,
+      personaListQuery(state)
+    )
       .then(function (payload) {
-        state.personas = ensureArray(payload.personas);
-        state.registries = payload.registries || state.registries;
-        state.bootstrapLoaded = true;
-        return loadPersona(state, personaKey);
+        applyBootstrapPayload(state, payload);
+        var nextKey = personaKey && state.personas.some(function (persona) {
+          return persona && persona.key === personaKey;
+        })
+          ? personaKey
+          : state.selectedPersonaKey;
+        if (!nextKey) {
+          state.current = null;
+          state.form = null;
+          state.dirty = false;
+          renderState(state);
+          return null;
+        }
+        return loadPersona(state, nextKey);
       });
   }
 
@@ -1898,6 +1956,143 @@
     loadPersona(state, nextKey);
   }
 
+  function clearSelectedPersona(state) {
+    stopPolling(state);
+    stopBatchPolling(state);
+    closeRunDetail(state);
+    state.lastRunId = null;
+    state.runDetails = null;
+    state.lastBatchId = null;
+    state.batchDetails = null;
+    state.batchLaunches = [];
+    state.batchLaunchSummary = null;
+    state.submittingBatchPromptRunIds = {};
+    state.current = null;
+    state.form = null;
+    state.dirty = false;
+  }
+
+  function reloadPersonaList(state, preferredPersonaKey) {
+    state.loading = true;
+    renderState(state);
+    return request(
+      'GET',
+      '/admin/persona-studio/personas',
+      null,
+      personaListQuery(state)
+    )
+      .then(function (payload) {
+        applyBootstrapPayload(state, payload);
+        var nextKey = preferredPersonaKey && state.personas.some(function (persona) {
+          return persona && persona.key === preferredPersonaKey;
+        })
+          ? preferredPersonaKey
+          : state.selectedPersonaKey;
+        if (!nextKey) {
+          clearSelectedPersona(state);
+          renderState(state);
+          return null;
+        }
+        return loadPersona(state, nextKey);
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.loading = false;
+        renderState(state);
+      });
+  }
+
+  function toggleArchivedPersonas(state, showArchived) {
+    if (state.showArchivedPersonas === showArchived) {
+      return;
+    }
+    if (
+      state.dirty &&
+      !window.confirm('You have unsaved persona changes. Discard them and reload the persona list?')
+    ) {
+      renderState(state);
+      return;
+    }
+    state.showArchivedPersonas = showArchived;
+    setStatus(state, showArchived ? 'Showing archived personas.' : 'Archived personas hidden.');
+    clearSelectedPersona(state);
+    reloadPersonaList(state, state.selectedPersonaKey).catch(function () {});
+  }
+
+  function archiveSelectedPersona(state) {
+    if (!state.selectedPersonaKey || state.archivingPersona) {
+      return Promise.resolve(null);
+    }
+    var definition = currentPersonaDefinition(state);
+    var label = definition.displayName || state.selectedPersonaKey;
+    if (
+      state.dirty &&
+      !window.confirm('Archive ' + label + '? Unsaved changes will be discarded.')
+    ) {
+      return Promise.resolve(null);
+    }
+    if (!window.confirm('Archive ' + label + '? It will be hidden unless Show archived is enabled.')) {
+      return Promise.resolve(null);
+    }
+    var reason = window.prompt('Archive reason', definition.archiveReason || '') || '';
+    state.archivingPersona = true;
+    setStatus(state, 'Archiving ' + label + '...');
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/archive',
+      { reason: reason }
+    )
+      .then(function () {
+        setStatus(state, 'Archived ' + label + '.');
+        if (!state.showArchivedPersonas) {
+          state.selectedPersonaKey = null;
+        }
+        return reloadPersonaList(state, state.showArchivedPersonas ? state.selectedPersonaKey : null);
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.archivingPersona = false;
+        renderState(state);
+      });
+  }
+
+  function unarchiveSelectedPersona(state) {
+    if (!state.selectedPersonaKey || state.archivingPersona) {
+      return Promise.resolve(null);
+    }
+    var definition = currentPersonaDefinition(state);
+    var label = definition.displayName || state.selectedPersonaKey;
+    state.archivingPersona = true;
+    setStatus(state, 'Restoring ' + label + '...');
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/unarchive'
+    )
+      .then(function () {
+        setStatus(state, 'Restored ' + label + '.');
+        return reloadPersonaList(state, state.selectedPersonaKey);
+      })
+      .catch(function (error) {
+        setError(state, stringifyError(error));
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.archivingPersona = false;
+        renderState(state);
+      });
+  }
+
   function createPersona(state) {
     var key = window.prompt('New persona key', '');
     if (!key) return;
@@ -2340,14 +2535,41 @@
     header.appendChild(createButton);
     nav.appendChild(header);
 
+    var controls = createEl('div', 'persona-lab-nav-controls');
+    var showArchivedToggle = createEl('label', 'persona-lab-toggle');
+    var showArchivedInput = document.createElement('input');
+    showArchivedInput.type = 'checkbox';
+    showArchivedInput.checked = Boolean(state.showArchivedPersonas);
+    showArchivedInput.addEventListener('change', function () {
+      toggleArchivedPersonas(state, showArchivedInput.checked);
+    });
+    showArchivedToggle.appendChild(showArchivedInput);
+    showArchivedToggle.appendChild(createEl('span', null, 'Show archived'));
+    controls.appendChild(showArchivedToggle);
+    if (state.showArchivedPersonas) {
+      controls.appendChild(createEl('span', 'persona-lab-badge archived', 'archive visible'));
+    }
+    nav.appendChild(controls);
+
     var list = createEl('div', 'persona-lab-nav-list');
     if (!state.personas.length) {
-      list.appendChild(createEl('div', 'persona-lab-empty', 'No persona drafts found yet.'));
+      list.appendChild(
+        createEl(
+          'div',
+          'persona-lab-empty',
+          state.showArchivedPersonas
+            ? 'No persona drafts found yet.'
+            : 'No active persona drafts found. Turn on Show archived to include retired personas.'
+        )
+      );
     } else {
       state.personas.forEach(function (persona) {
+        var archived = persona.status === 'ARCHIVED' || Boolean(persona.archivedAt);
         var item = createEl(
           'button',
-          'persona-lab-nav-item' + (persona.key === state.selectedPersonaKey ? ' active' : '')
+          'persona-lab-nav-item' +
+            (persona.key === state.selectedPersonaKey ? ' active' : '') +
+            (archived ? ' archived' : '')
         );
         item.type = 'button';
         item.addEventListener('click', function () {
@@ -2361,6 +2583,7 @@
         item.appendChild(title);
         item.appendChild(createEl('code', null, persona.key));
         var meta = createEl('div', 'persona-lab-nav-item-meta');
+        if (archived) meta.appendChild(createEl('span', 'persona-lab-badge archived', 'archived'));
         meta.appendChild(createEl('span', 'persona-lab-badge', persona.hasDraft ? 'draft' : 'no-draft'));
         if (persona.betaReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'beta'));
         if (persona.deployedReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'deployed'));
@@ -3211,6 +3434,9 @@
     var titleCopy = createEl('div');
     titleCopy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
     titleCopy.appendChild(createEl('h1', null, 'Persona Studio'));
+    if (isCurrentPersonaArchived(state)) {
+      titleCopy.appendChild(createEl('span', 'persona-lab-badge archived', 'Archived persona'));
+    }
     titleCopy.appendChild(
       createEl(
         'p',
@@ -3221,11 +3447,24 @@
     toolbar.appendChild(titleCopy);
 
     var actions = createEl('div', 'persona-lab-actions');
+    var personaArchived = isCurrentPersonaArchived(state);
     var saveButton = createEl('button', 'persona-lab-button', state.saving ? 'Saving…' : 'Save');
     saveButton.type = 'button';
-    saveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch;
+    saveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch || state.archivingPersona;
     saveButton.addEventListener('click', function () {
       savePersona(state).catch(function () {});
+    });
+    var archiveButton = createEl(
+      'button',
+      personaArchived ? 'persona-lab-button' : 'persona-lab-button danger',
+      state.archivingPersona
+        ? personaArchived ? 'Restoring…' : 'Archiving…'
+        : personaArchived ? 'Unarchive' : 'Archive'
+    );
+    archiveButton.type = 'button';
+    archiveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch || state.archivingPersona;
+    archiveButton.addEventListener('click', function () {
+      (personaArchived ? unarchiveSelectedPersona(state) : archiveSelectedPersona(state)).catch(function () {});
     });
     var singleRunButton = createEl(
       'button',
@@ -3233,7 +3472,8 @@
       state.testing ? 'Opening…' : 'Single Run'
     );
     singleRunButton.type = 'button';
-    singleRunButton.disabled = !state.form || state.testing || state.loadingPersona || state.launchingBatch;
+    singleRunButton.disabled =
+      !state.form || personaArchived || state.testing || state.loadingPersona || state.launchingBatch || state.archivingPersona;
     singleRunButton.addEventListener('click', function () {
       testPersona(state).catch(function () {});
     });
@@ -3243,11 +3483,13 @@
       state.launchingBatch ? 'Launching…' : 'Parallel Runs'
     );
     batchButton.type = 'button';
-    batchButton.disabled = !state.form || state.testing || state.loadingPersona || state.launchingBatch;
+    batchButton.disabled =
+      !state.form || personaArchived || state.testing || state.loadingPersona || state.launchingBatch || state.archivingPersona;
     batchButton.addEventListener('click', function () {
       openBatchWizard(state);
     });
     actions.appendChild(saveButton);
+    actions.appendChild(archiveButton);
     actions.appendChild(singleRunButton);
     actions.appendChild(batchButton);
     toolbar.appendChild(actions);
