@@ -1322,20 +1322,24 @@
 
   function mergeRuntimeToolOptions(options, selectedIds) {
     var merged = [];
-    var seen = {};
+    var seen = new Set();
     ensureArray(options).forEach(function (option) {
-      if (!option || !option.id || seen[option.id]) return;
-      seen[option.id] = true;
+      if (!option || !option.id) return;
+      var optionId = String(option.id);
+      if (seen.has(optionId)) return;
+      seen.add(optionId);
       merged.push(option);
     });
     ensureArray(selectedIds).forEach(function (id) {
-      if (!id || seen[id]) return;
-      seen[id] = true;
-      var separator = String(id).indexOf(':');
-      var connectorKey = separator > 0 ? String(id).slice(0, separator) : 'unavailable';
-      var toolName = separator > 0 ? String(id).slice(separator + 1) : String(id);
+      if (!id) return;
+      var selectedId = String(id);
+      if (seen.has(selectedId)) return;
+      seen.add(selectedId);
+      var separator = selectedId.indexOf(':');
+      var connectorKey = separator > 0 ? selectedId.slice(0, separator) : 'unavailable';
+      var toolName = separator > 0 ? selectedId.slice(separator + 1) : selectedId;
       merged.push({
-        id: String(id),
+        id: selectedId,
         key: toolName,
         toolName: toolName,
         connectorKey: connectorKey,
@@ -2766,8 +2770,7 @@
 
   function buildRuntimeToolSelector(state, options) {
     var selectedValues = ensureArray(state.form.draft.toolPolicy.allowedRuntimeToolIds);
-    var selectedSet = {};
-    selectedValues.forEach(function (id) { selectedSet[id] = true; });
+    var selectedSet = new Set(selectedValues.map(function (id) { return String(id); }));
     var root = createEl('div', 'persona-lab-runtime-tools');
     var toolbar = createEl('div', 'persona-lab-tool-toolbar');
     var search = createEl('input', 'persona-lab-input');
@@ -2792,25 +2795,28 @@
       root.appendChild(createEl('div', 'persona-lab-helper', 'Local MCPViews plugin catalog is unavailable: ' + state.localMcpCatalogError));
     }
 
-    var groups = {};
+    var groups = new Map();
     ensureArray(options).forEach(function (option) {
       var key = option.connectorKey || 'unavailable';
-      if (!groups[key]) {
-        groups[key] = {
+      var group = groups.get(key);
+      if (!group) {
+        group = {
           key: key,
           label: option.connectorLabel || humanizeIdentifier(key),
           authState: option.authState || '',
           options: [],
         };
+        groups.set(key, group);
       }
-      if (option.authState && !groups[key].authState) {
-        groups[key].authState = option.authState;
+      if (option.authState && !group.authState) {
+        group.authState = option.authState;
       }
-      groups[key].options.push(option);
+      group.options.push(option);
     });
 
-    Object.keys(groups).sort().forEach(function (connectorKey) {
-      var group = groups[connectorKey];
+    Array.from(groups.keys()).sort().forEach(function (connectorKey) {
+      var group = groups.get(connectorKey);
+      if (!group) return;
       var groupEl = createEl('div', 'persona-lab-tool-group');
       var header = createEl('div', 'persona-lab-tool-group-header');
       var headerCopy = createEl('div');
@@ -2839,7 +2845,7 @@
         );
         var input = document.createElement('input');
         input.type = 'checkbox';
-        input.checked = Boolean(selectedSet[option.id]);
+        input.checked = selectedSet.has(String(option.id));
         input.addEventListener('change', function () {
           state.form.draft.toolPolicy.allowedRuntimeToolIds = toggleListValue(
             state.form.draft.toolPolicy.allowedRuntimeToolIds,
