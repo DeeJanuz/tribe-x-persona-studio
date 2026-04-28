@@ -70,6 +70,11 @@
         showArchivedPersonas: false,
         personas: [],
         registries: null,
+        localMcpCatalog: null,
+        localMcpCatalogLoaded: false,
+        localMcpCatalogLoading: false,
+        localMcpCatalogPromise: null,
+        localMcpCatalogError: '',
         selectedPersonaKey: null,
         loadingPersona: false,
         personaPromise: null,
@@ -108,6 +113,11 @@
         chromeKey: '',
         ruleEditorIndex: -1,
         ruleEditorDraft: '',
+        skillEditorOpen: false,
+        skillEditorIndex: -1,
+        skillEditorDraft: '',
+        skillEditorError: '',
+        skillVariableRowSequence: 0,
       };
     }
     return globalState.sessions[sessionId];
@@ -123,7 +133,7 @@
     var style = document.createElement('style');
     style.id = 'parallel-run-workshop-theme';
     style.textContent = [
-      '.persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-blur:12px;--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success:#22c55e;--color-success-bg:rgba(34,197,94,0.15);--color-success-text:#86efac;--color-error:#ef4444;--color-error-bg:rgba(239,68,68,0.15);--color-error-text:#fca5a5;--color-warning:#eab308;--color-warning-bg:rgba(234,179,8,0.15);--color-warning-text:#fde047;--color-info:#3b82f6;--color-info-bg:rgba(59,130,246,0.15);--color-info-text:#93bbfd;--font-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;display:grid;grid-template-columns:304px minmax(0,1fr);height:100%;min-height:0;background:radial-gradient(circle at top left,rgba(129,140,248,0.18),transparent 28%),radial-gradient(circle at bottom right,rgba(45,212,191,0.14),transparent 24%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent 28%),var(--bg-app);color:var(--text-primary);font-family:var(--font-sans)}',
+      '.persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-blur:12px;--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success:#22c55e;--color-success-bg:rgba(34,197,94,0.15);--color-success-text:#86efac;--color-error:#ef4444;--color-error-bg:rgba(239,68,68,0.15);--color-error-text:#fca5a5;--color-warning:#eab308;--color-warning-bg:rgba(234,179,8,0.15);--color-warning-text:#fde047;--color-info:#3b82f6;--color-info-bg:rgba(59,130,246,0.15);--color-info-text:#93bbfd;--font-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;display:grid;grid-template-columns:304px minmax(0,1fr);height:100%;min-height:0;background:linear-gradient(180deg,rgba(255,255,255,0.025),transparent 32%),var(--bg-app);color:var(--text-primary);font-family:var(--font-sans)}',
       '@media (prefers-color-scheme: light){.persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}}',
       'html[data-theme="dark"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success-text:#86efac;--color-error-text:#fca5a5;--color-warning-text:#fde047;--color-info-text:#93bbfd}',
       'html[data-theme="light"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}',
@@ -235,10 +245,34 @@
       '.persona-lab-choice strong,.persona-lab-choice code{display:block}',
       '.persona-lab-choice strong{margin-bottom:4px}',
       '.persona-lab-choice code{font-size:11px;color:var(--text-tertiary)}',
+      '.persona-lab-choice-variable-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}',
       '.persona-lab-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+      '.persona-lab-runtime-tools{display:flex;flex-direction:column;gap:12px}',
+      '.persona-lab-tool-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
+      '.persona-lab-tool-toolbar .persona-lab-input{max-width:360px}',
+      '.persona-lab-tool-group{border:1px solid var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);overflow:hidden}',
+      '.persona-lab-tool-group-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--glass-border);background:var(--bg-surface-subtle)}',
+      '.persona-lab-tool-group-header strong{display:block;font-size:14px;line-height:1.3}',
+      '.persona-lab-tool-group-header code{display:block;margin-top:4px;font-size:11px;color:var(--text-tertiary)}',
+      '.persona-lab-tool-list{display:flex;flex-direction:column}',
+      '.persona-lab-tool-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid var(--border-subtle)}',
+      '.persona-lab-tool-row:first-child{border-top:none}',
+      '.persona-lab-tool-row input{margin-top:4px}',
+      '.persona-lab-tool-copy{display:flex;flex-direction:column;gap:5px;min-width:0}',
+      '.persona-lab-tool-copy strong{font-size:13px;line-height:1.35}',
+      '.persona-lab-tool-copy code{font-size:11px;color:var(--text-tertiary);word-break:break-all}',
+      '.persona-lab-tool-row.hidden,.persona-lab-tool-group.hidden{display:none}',
+      '.persona-lab-variable-list{display:flex;flex-direction:column;gap:10px}',
+      '.persona-lab-variable-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(140px,1fr) minmax(120px,.8fr) minmax(120px,1fr) auto auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-variable-row .persona-lab-field{gap:5px}',
+      '.persona-lab-variable-required{align-self:center;margin-bottom:11px}',
       '.persona-lab-section-list{display:flex;flex-direction:column;gap:12px}',
       '.persona-lab-skill{border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-skill-header{display:flex;align-items:center;justify-content:space-between;gap:12px}',
+      '.persona-lab-skill-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+      '.persona-lab-skill-preview{margin:0;max-height:132px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-border);border-radius:14px;padding:12px;background:rgba(15,23,42,.38);color:var(--text-secondary);font-size:12px;line-height:1.5}',
+      'html[data-theme="light"] .persona-lab-skill-preview,.persona-lab-root[data-theme="light"] .persona-lab-skill-preview{background:rgba(255,255,255,.58)}',
+      '.persona-lab-skill-editor{min-height:min(52vh,520px);font-family:var(--font-mono);font-size:12px}',
       '.persona-lab-json{margin:0;white-space:pre-wrap;word-break:break-word;background:rgba(15,23,42,.88);color:#e5eefc;border-radius:16px;padding:14px;font-size:12px;line-height:1.55;overflow:auto;border:1px solid rgba(148,163,184,.2)}',
       'html[data-theme="light"] .persona-lab-json,.persona-lab-root[data-theme="light"] .persona-lab-json{background:rgba(15,23,42,.96);color:#e5eefc}',
       '.persona-lab-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text-secondary)}',
@@ -286,7 +320,7 @@
       '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:-.02em}',
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor{grid-template-columns:1fr}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row{grid-template-columns:1fr}}',
       '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}}',
     ].join('');
     document.head.appendChild(style);
@@ -388,14 +422,7 @@
           reasoningModel: detail.document.draft.modelPolicy.reasoningModel || '',
           workflowModels: clone(detail.document.draft.modelPolicy.workflowModels || {}),
         },
-        toolPolicy: {
-          allowedBusinessTools: Array.isArray(detail.document.draft.toolPolicy.allowedBusinessTools)
-            ? detail.document.draft.toolPolicy.allowedBusinessTools.slice()
-            : [],
-          allowedConnectorKeys: Array.isArray(detail.document.draft.toolPolicy.allowedConnectorKeys)
-            ? detail.document.draft.toolPolicy.allowedConnectorKeys.slice()
-            : [],
-        },
+        toolPolicy: ensureToolPolicyShape(detail.document.draft.toolPolicy),
         workflowRefs: Array.isArray(detail.document.draft.workflowRefs)
           ? detail.document.draft.workflowRefs.slice()
           : [],
@@ -407,7 +434,7 @@
       },
       prompt: detail.document.prompt || '',
       customSkills: Array.isArray(detail.document.customSkills)
-        ? clone(detail.document.customSkills)
+        ? clone(detail.document.customSkills).map(normalizeCustomSkill)
         : [],
     };
   }
@@ -495,6 +522,40 @@
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   }
 
+  function normalizeSkillVariable(variable, index) {
+    var source = ensureObject(variable);
+    var name = String(source.name || source.key || source.variableName || '').trim();
+    return {
+      name: name || 'variable_' + (index + 1),
+      label: String(source.label || source.displayName || source.title || name || 'Variable ' + (index + 1)).trim(),
+      type: String(source.type || source.kind || source.dataType || source.variableType || 'text').trim(),
+      default: source.default !== undefined ? source.default : source.defaultValue,
+      required: source.required !== false,
+    };
+  }
+
+  function normalizeCustomSkill(skill, index) {
+    var source = ensureObject(skill);
+    return {
+      key: String(source.key || 'custom-skill-' + (index + 1)),
+      title: String(source.title || source.name || 'Custom skill ' + (index + 1)),
+      summary: String(source.summary || source.description || 'Describe what this skill adds.'),
+      content: String(source.content || source.promptTemplate || 'Add markdown instructions here.'),
+      variables: ensureArray(source.variables).map(normalizeSkillVariable),
+    };
+  }
+
+  function ensureToolPolicyShape(policy) {
+    var source = ensureObject(policy);
+    return {
+      reservedCoreTools: ensureArray(source.reservedCoreTools).slice(),
+      allowedBusinessTools: ensureArray(source.allowedBusinessTools).slice(),
+      deniedBusinessTools: ensureArray(source.deniedBusinessTools).slice(),
+      allowedConnectorKeys: ensureArray(source.allowedConnectorKeys).slice(),
+      allowedRuntimeToolIds: ensureArray(source.allowedRuntimeToolIds).slice(),
+    };
+  }
+
   function clampInteger(value, min, max, fallback) {
     var numeric = Number(value);
     if (!Number.isFinite(numeric)) return fallback;
@@ -557,6 +618,7 @@
       description: item.description ? String(item.description) : '',
       group: item.group ? String(item.group) : '',
       toolCount: Number.isFinite(Number(item.toolCount)) ? Number(item.toolCount) : null,
+      variables: ensureArray(item.variables).map(normalizeSkillVariable),
     };
   }
 
@@ -578,6 +640,7 @@
         description: 'Currently selected but not returned by the ProPaasAI registry.',
         group: 'Unregistered',
         toolCount: null,
+        variables: [],
       });
     });
     return options;
@@ -1082,6 +1145,78 @@
     });
   }
 
+  function markFocusKey(element, key) {
+    if (element && key) {
+      element.setAttribute('data-persona-focus-key', key);
+    }
+    return element;
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
+
+  function elementPath(root, element) {
+    var path = [];
+    var current = element;
+    while (current && current !== root && current.parentNode) {
+      var siblings = Array.prototype.slice.call(current.parentNode.children || []);
+      path.unshift(siblings.indexOf(current));
+      current = current.parentNode;
+    }
+    return current === root ? path : [];
+  }
+
+  function elementAtPath(root, path) {
+    var current = root;
+    ensureArray(path).forEach(function (index) {
+      current = current && current.children ? current.children[index] : null;
+    });
+    return current || null;
+  }
+
+  function captureActiveElementState(state) {
+    if (!state.container || !state.container.contains(document.activeElement)) {
+      return null;
+    }
+    var active = document.activeElement;
+    if (!active || !/^(INPUT|TEXTAREA|SELECT)$/i.test(active.tagName)) {
+      return null;
+    }
+    return {
+      focusKey: active.getAttribute('data-persona-focus-key') || '',
+      path: elementPath(state.container, active),
+      selectionStart: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+      selectionEnd: typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
+    };
+  }
+
+  function restoreActiveElementState(state, activeState) {
+    if (!state.container || !activeState || !window.requestAnimationFrame) return;
+    window.requestAnimationFrame(function () {
+      var target = null;
+      if (activeState.focusKey) {
+        target = state.container.querySelector('[data-persona-focus-key="' + cssEscape(activeState.focusKey) + '"]');
+      }
+      if (!target && activeState.path && activeState.path.length) {
+        target = elementAtPath(state.container, activeState.path);
+      }
+      if (!target || typeof target.focus !== 'function') return;
+      target.focus({ preventScroll: true });
+      if (
+        activeState.selectionStart !== null &&
+        typeof target.setSelectionRange === 'function'
+      ) {
+        try {
+          target.setSelectionRange(activeState.selectionStart, activeState.selectionEnd);
+        } catch (_error) {}
+      }
+    });
+  }
+
   function replacePanelInPlace(state, selector, nextPanel) {
     if (!state.container) return false;
     var existing = state.container.querySelector(selector);
@@ -1124,6 +1259,138 @@
     };
   }
 
+  function humanizeIdentifier(value) {
+    return String(value || '')
+      .split(/[-_\s:]+/)
+      .filter(Boolean)
+      .map(function (part) {
+        return part.slice(0, 1).toUpperCase() + part.slice(1);
+      })
+      .join(' ');
+  }
+
+  function canonicalRuntimeToolId(connectorKey, toolName) {
+    return String((connectorKey || '*')).trim().toLowerCase() + ':' + String(toolName || '').trim().toLowerCase();
+  }
+
+  function normalizeRuntimeToolOption(tool, connector, source, groupName) {
+    var toolSource = ensureObject(tool);
+    var connectorSource = ensureObject(connector);
+    var toolName = String(toolSource.toolName || toolSource.name || toolSource.key || '').trim();
+    var connectorKey = String(toolSource.connectorKey || connectorSource.key || '').trim();
+    if (!toolName || !connectorKey) return null;
+    var id = String(toolSource.id || canonicalRuntimeToolId(connectorKey, toolName)).trim();
+    return {
+      id: id,
+      key: toolName,
+      toolName: toolName,
+      connectorKey: connectorKey,
+      connectorLabel: String(connectorSource.label || toolSource.connectorLabel || humanizeIdentifier(connectorKey)),
+      label: String(toolSource.label || humanizeIdentifier(toolName)),
+      description: String(toolSource.description || toolSource.whenToCall || ''),
+      operationKind: String(toolSource.operationKind || toolSource.operation_kind || (toolSource.destructive ? 'destructive' : toolSource.mutating ? 'write' : 'read')),
+      authState: String(toolSource.authState || connectorSource.authState || ''),
+      source: source || String(toolSource.source || 'static'),
+      group: String(groupName || toolSource.group || ''),
+    };
+  }
+
+  function collectStaticRuntimeToolOptions(toolRegistry) {
+    return ensureArray(toolRegistry && toolRegistry.businessToolOptions)
+      .map(function (tool) {
+        return normalizeRuntimeToolOption(tool, { key: tool && tool.connectorKey, label: '' }, 'static', tool && tool.group);
+      })
+      .filter(Boolean);
+  }
+
+  function collectLocalRuntimeToolOptions(catalog) {
+    var options = [];
+    ensureArray(catalog && catalog.connectors).forEach(function (connector) {
+      ensureArray(connector.tools).forEach(function (tool) {
+        var option = normalizeRuntimeToolOption(tool, connector, 'dynamic', 'Tools');
+        if (option) options.push(option);
+      });
+      ensureArray(connector.toolGroups).forEach(function (group) {
+        ensureArray(group.tools).forEach(function (tool) {
+          var option = normalizeRuntimeToolOption(tool, connector, 'dynamic', group.name);
+          if (option) options.push(option);
+        });
+      });
+    });
+    return options;
+  }
+
+  function mergeRuntimeToolOptions(options, selectedIds) {
+    var merged = [];
+    var seen = {};
+    ensureArray(options).forEach(function (option) {
+      if (!option || !option.id || seen[option.id]) return;
+      seen[option.id] = true;
+      merged.push(option);
+    });
+    ensureArray(selectedIds).forEach(function (id) {
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      var separator = String(id).indexOf(':');
+      var connectorKey = separator > 0 ? String(id).slice(0, separator) : 'unavailable';
+      var toolName = separator > 0 ? String(id).slice(separator + 1) : String(id);
+      merged.push({
+        id: String(id),
+        key: toolName,
+        toolName: toolName,
+        connectorKey: connectorKey,
+        connectorLabel: humanizeIdentifier(connectorKey),
+        label: humanizeIdentifier(toolName),
+        description: 'Currently selected but not returned by the static registry or local MCPViews plugin catalog.',
+        operationKind: 'read',
+        authState: 'unavailable',
+        source: 'unavailable',
+        group: 'Unavailable',
+      });
+    });
+    return merged;
+  }
+
+  function runtimeToolOptionsForState(state, registries) {
+    var toolRegistry = ensureObject(registries && registries.toolRegistry);
+    var selected = state.form && state.form.draft && state.form.draft.toolPolicy
+      ? state.form.draft.toolPolicy.allowedRuntimeToolIds
+      : [];
+    return mergeRuntimeToolOptions(
+      collectStaticRuntimeToolOptions(toolRegistry).concat(collectLocalRuntimeToolOptions(state.localMcpCatalog)),
+      selected
+    );
+  }
+
+  function loadLocalMcpCatalog(state) {
+    if (state.localMcpCatalogLoaded || state.localMcpCatalogPromise) {
+      return state.localMcpCatalogPromise || Promise.resolve(state.localMcpCatalog);
+    }
+    if (!window.__TAURI__ || !window.__TAURI__.core || typeof window.__TAURI__.core.invoke !== 'function') {
+      state.localMcpCatalogLoaded = true;
+      return Promise.resolve(null);
+    }
+    state.localMcpCatalogLoading = true;
+    state.localMcpCatalogPromise = window.__TAURI__.core.invoke('get_local_mcp_catalog')
+      .then(function (catalog) {
+        state.localMcpCatalog = catalog || null;
+        state.localMcpCatalogError = '';
+        return state.localMcpCatalog;
+      })
+      .catch(function (error) {
+        state.localMcpCatalog = null;
+        state.localMcpCatalogError = stringifyError(error);
+        return null;
+      })
+      .finally(function () {
+        state.localMcpCatalogLoaded = true;
+        state.localMcpCatalogLoading = false;
+        state.localMcpCatalogPromise = null;
+        renderState(state);
+      });
+    return state.localMcpCatalogPromise;
+  }
+
   function activeRegistries(state) {
     var source = ensureObject(state.registries);
     var registries = Object.assign({
@@ -1145,10 +1412,12 @@
     registries.toolRegistry = Object.assign({
       businessTools: [],
       businessToolOptions: [],
+      runtimeToolOptions: [],
       connectors: [],
       connectorOptions: [],
       reservedCoreTools: [],
     }, ensureObject(registries.toolRegistry));
+    registries.toolRegistry.runtimeToolOptions = runtimeToolOptionsForState(state, registries);
     return registries;
   }
 
@@ -1232,6 +1501,10 @@
     }
     state.loadingPersona = true;
     state.selectedPersonaKey = personaKey;
+    state.skillEditorOpen = false;
+    state.skillEditorIndex = -1;
+    state.skillEditorDraft = '';
+    state.skillEditorError = '';
     renderState(state);
     state.personaPromise = request('GET', '/admin/persona-studio/personas/' + encodeURIComponent(personaKey))
       .then(function (detail) {
@@ -1245,6 +1518,10 @@
         state.loadingPersona = false;
         state.batchWizardOpen = false;
         state.batchError = '';
+        state.skillEditorOpen = false;
+        state.skillEditorIndex = -1;
+        state.skillEditorDraft = '';
+        state.skillEditorError = '';
         replaceSessionChrome(state, SESSION_LABEL + ' · ' + detail.document.definition.displayName);
         renderState(state);
         if (state.lastRunId) {
@@ -1970,6 +2247,10 @@
     state.current = null;
     state.form = null;
     state.dirty = false;
+    state.skillEditorOpen = false;
+    state.skillEditorIndex = -1;
+    state.skillEditorDraft = '';
+    state.skillEditorError = '';
   }
 
   function reloadPersonaList(state, preferredPersonaKey) {
@@ -2155,6 +2436,163 @@
     return text.length > 96 ? text.slice(0, 93) + '...' : text;
   }
 
+  function compactSkillContent(value) {
+    var text = String(value || '').trim();
+    if (!text) return 'No content yet.';
+    return text.length > 520 ? text.slice(0, 517) + '...' : text;
+  }
+
+  function ensureVariableRowId(state, variable) {
+    if (!variable) return '';
+    if (!variable.__personaRowId) {
+      Object.defineProperty(variable, '__personaRowId', {
+        value: 'variable-row-' + (++state.skillVariableRowSequence),
+        enumerable: false,
+        configurable: true,
+      });
+    }
+    return variable.__personaRowId;
+  }
+
+  function defaultSkillVariable(index) {
+    return {
+      name: 'variable_' + (index + 1),
+      label: 'Variable ' + (index + 1),
+      type: 'text',
+      default: '',
+      required: true,
+    };
+  }
+
+  function buildSkillVariableEditor(state, skill, skillIndex) {
+    skill.variables = ensureArray(skill.variables).map(function (variable, index) {
+      if (variable && typeof variable === 'object' && !Array.isArray(variable)) {
+        var normalized = normalizeSkillVariable(variable, index);
+        Object.assign(variable, normalized);
+        return variable;
+      }
+      return normalizeSkillVariable(variable, index);
+    });
+    var wrapper = createEl('div', 'persona-lab-section-list');
+    var header = createEl('div', 'persona-lab-skill-header');
+    appendSectionHeading(
+      header,
+      'h3',
+      'Variables',
+      'Variables let a skill ask for user-specific values before the prompt is generated. Example: audience, account_name, date_start.'
+    );
+    var addVariable = createEl('button', 'persona-lab-button', 'Add variable');
+    addVariable.type = 'button';
+    addVariable.addEventListener('click', function () {
+      skill.variables.push(defaultSkillVariable(skill.variables.length));
+      updateDirtyState(state);
+      renderState(state);
+    });
+    header.appendChild(addVariable);
+    wrapper.appendChild(header);
+
+    var list = createEl('div', 'persona-lab-variable-list');
+    if (!skill.variables.length) {
+      list.appendChild(createEl('div', 'persona-lab-empty', 'No variables for this custom skill.'));
+    }
+    skill.variables.forEach(function (variable, variableIndex) {
+      var rowId = ensureVariableRowId(state, variable);
+      var row = createEl('div', 'persona-lab-variable-row');
+
+      var nameInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-name');
+      nameInput.value = variable.name || '';
+      bindInput(nameInput, function () {
+        variable.name = nameInput.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(row, 'Name', nameInput, 'Machine-readable variable name. Use lowercase snake_case.');
+
+      var labelInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-label');
+      labelInput.value = variable.label || '';
+      bindInput(labelInput, function () {
+        variable.label = labelInput.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(row, 'Label', labelInput, 'Short label shown to the person filling out the skill.');
+
+      var typeSelect = markFocusKey(createEl('select', 'persona-lab-select'), 'skill-' + skillIndex + '-' + rowId + '-type');
+      ['text', 'textarea', 'datetime', 'email_account_multi_select', 'number', 'boolean'].forEach(function (type) {
+        var option = document.createElement('option');
+        option.value = type;
+        option.textContent = humanizeIdentifier(type);
+        if ((variable.type || 'text') === type) option.selected = true;
+        typeSelect.appendChild(option);
+      });
+      bindInput(typeSelect, function () {
+        variable.type = typeSelect.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(row, 'Type', typeSelect);
+
+      var defaultInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-default');
+      defaultInput.value = variable.default == null ? '' : String(variable.default);
+      bindInput(defaultInput, function () {
+        variable.default = defaultInput.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(row, 'Default', defaultInput, 'Optional default value used when the person does not provide one.');
+
+      var requiredLabel = createEl('label', 'persona-lab-toggle persona-lab-variable-required');
+      var requiredInput = document.createElement('input');
+      requiredInput.type = 'checkbox';
+      requiredInput.checked = variable.required !== false;
+      requiredInput.addEventListener('change', function () {
+        variable.required = requiredInput.checked;
+        updateDirtyState(state);
+      });
+      requiredLabel.appendChild(requiredInput);
+      requiredLabel.appendChild(document.createTextNode('Required'));
+      row.appendChild(requiredLabel);
+
+      var remove = createEl('button', 'persona-lab-button', 'Remove');
+      remove.type = 'button';
+      remove.addEventListener('click', function () {
+        skill.variables.splice(variableIndex, 1);
+        updateDirtyState(state);
+        renderState(state);
+      });
+      row.appendChild(remove);
+      list.appendChild(row);
+    });
+    wrapper.appendChild(list);
+    return wrapper;
+  }
+
+  function openCustomSkillEditor(state, index) {
+    var skills = ensureArray(state.form && state.form.customSkills);
+    if (index < 0 || index >= skills.length) return;
+    state.skillEditorOpen = true;
+    state.skillEditorIndex = index;
+    state.skillEditorDraft = skills[index].content || '';
+    state.skillEditorError = '';
+    renderState(state);
+  }
+
+  function closeCustomSkillEditor(state) {
+    state.skillEditorOpen = false;
+    state.skillEditorIndex = -1;
+    state.skillEditorDraft = '';
+    state.skillEditorError = '';
+    renderState(state);
+  }
+
+  function saveCustomSkillEditor(state) {
+    var skills = ensureArray(state.form && state.form.customSkills);
+    if (state.skillEditorIndex < 0 || state.skillEditorIndex >= skills.length) {
+      state.skillEditorError = 'This skill is no longer available.';
+      renderState(state);
+      return;
+    }
+    skills[state.skillEditorIndex].content = state.skillEditorDraft || '';
+    updateDirtyState(state);
+    closeCustomSkillEditor(state);
+  }
+
   function syncRuleEditorState(state) {
     var rules = ensureArray(state.form && state.form.draft && state.form.draft.rules);
     if (!rules.length) {
@@ -2289,10 +2727,161 @@
       } else if (item.toolCount !== null) {
         copy.appendChild(createEl('p', 'persona-lab-helper', formatNumber(item.toolCount) + ' tools'));
       }
+      if (item.variables && item.variables.length) {
+        var variableList = createEl('div', 'persona-lab-choice-variable-list');
+        item.variables.forEach(function (variable) {
+          variableList.appendChild(
+            createEl(
+              'span',
+              'persona-lab-badge',
+              (variable.label || variable.name) + ' · ' + variable.type
+            )
+          );
+        });
+        copy.appendChild(variableList);
+      }
       row.appendChild(copy);
       grid.appendChild(row);
     });
     return grid;
+  }
+
+  function copyText(value) {
+    if (window.navigator && window.navigator.clipboard && window.navigator.clipboard.writeText) {
+      window.navigator.clipboard.writeText(String(value || '')).catch(function () {});
+    }
+  }
+
+  function filterRuntimeToolRows(root, query) {
+    var normalized = String(query || '').trim().toLowerCase();
+    Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-row'), function (row) {
+      var haystack = String(row.getAttribute('data-search') || '').toLowerCase();
+      row.classList.toggle('hidden', Boolean(normalized) && haystack.indexOf(normalized) < 0);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-group'), function (group) {
+      var visibleRows = group.querySelectorAll('.persona-lab-tool-row:not(.hidden)').length;
+      group.classList.toggle('hidden', visibleRows === 0);
+    });
+  }
+
+  function buildRuntimeToolSelector(state, options) {
+    var selectedValues = ensureArray(state.form.draft.toolPolicy.allowedRuntimeToolIds);
+    var selectedSet = {};
+    selectedValues.forEach(function (id) { selectedSet[id] = true; });
+    var root = createEl('div', 'persona-lab-runtime-tools');
+    var toolbar = createEl('div', 'persona-lab-tool-toolbar');
+    var search = createEl('input', 'persona-lab-input');
+    search.type = 'search';
+    search.placeholder = 'Search connectors, tools, or IDs';
+    search.setAttribute('aria-label', 'Search tools by connector, tool, or ID');
+    search.addEventListener('input', function () {
+      filterRuntimeToolRows(root, search.value);
+    });
+    toolbar.appendChild(search);
+    var summary = createEl(
+      'span',
+      'persona-lab-badge',
+      formatNumber(selectedValues.length) + ' selected'
+    );
+    toolbar.appendChild(summary);
+    root.appendChild(toolbar);
+
+    if (state.localMcpCatalogLoading) {
+      root.appendChild(createEl('div', 'persona-lab-helper', 'Loading local MCPViews plugin catalog...'));
+    } else if (state.localMcpCatalogError) {
+      root.appendChild(createEl('div', 'persona-lab-helper', 'Local MCPViews plugin catalog is unavailable: ' + state.localMcpCatalogError));
+    }
+
+    var groups = {};
+    ensureArray(options).forEach(function (option) {
+      var key = option.connectorKey || 'unavailable';
+      if (!groups[key]) {
+        groups[key] = {
+          key: key,
+          label: option.connectorLabel || humanizeIdentifier(key),
+          authState: option.authState || '',
+          options: [],
+        };
+      }
+      if (option.authState && !groups[key].authState) {
+        groups[key].authState = option.authState;
+      }
+      groups[key].options.push(option);
+    });
+
+    Object.keys(groups).sort().forEach(function (connectorKey) {
+      var group = groups[connectorKey];
+      var groupEl = createEl('div', 'persona-lab-tool-group');
+      var header = createEl('div', 'persona-lab-tool-group-header');
+      var headerCopy = createEl('div');
+      headerCopy.appendChild(createEl('strong', null, group.label));
+      headerCopy.appendChild(createEl('code', null, connectorKey));
+      header.appendChild(headerCopy);
+      header.appendChild(createEl('span', 'persona-lab-badge', group.authState || 'available'));
+      groupEl.appendChild(header);
+      var list = createEl('div', 'persona-lab-tool-list');
+      group.options.sort(function (left, right) {
+        return String(left.label).localeCompare(String(right.label));
+      }).forEach(function (option) {
+        var row = createEl('label', 'persona-lab-tool-row');
+        row.setAttribute(
+          'data-search',
+          [
+            option.id,
+            option.connectorKey,
+            option.connectorLabel,
+            option.toolName,
+            option.label,
+            option.description,
+            option.operationKind,
+            option.source,
+          ].join(' ')
+        );
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = Boolean(selectedSet[option.id]);
+        input.addEventListener('change', function () {
+          state.form.draft.toolPolicy.allowedRuntimeToolIds = toggleListValue(
+            state.form.draft.toolPolicy.allowedRuntimeToolIds,
+            option.id
+          );
+          updateDirtyState(state);
+          renderState(state);
+        });
+        row.appendChild(input);
+        var copy = createEl('div', 'persona-lab-tool-copy');
+        copy.appendChild(createEl('strong', null, option.label));
+        copy.appendChild(createEl('code', null, option.id));
+        if (option.description) {
+          copy.appendChild(createEl('p', 'persona-lab-helper', option.description));
+        }
+        var badges = createEl('div', 'persona-lab-inline');
+        badges.appendChild(createEl('span', 'persona-lab-badge', option.operationKind || 'read'));
+        badges.appendChild(createEl('span', 'persona-lab-badge', option.source || 'static'));
+        if (option.group) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', option.group));
+        }
+        copy.appendChild(badges);
+        row.appendChild(copy);
+        var copyButton = createEl('button', 'persona-lab-button', 'Copy ID');
+        copyButton.type = 'button';
+        copyButton.title = 'Copy stable tool id';
+        copyButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          copyText(option.id);
+        });
+        row.appendChild(copyButton);
+        list.appendChild(row);
+      });
+      groupEl.appendChild(list);
+      root.appendChild(groupEl);
+    });
+
+    if (!ensureArray(options).length) {
+      root.appendChild(createEl('div', 'persona-lab-empty', 'No tools are available from the backend registry or local MCPViews catalog.'));
+    }
+
+    return root;
   }
 
   function buildModelSelect(registries, selectedValue, onChange, allowEmpty) {
@@ -2597,7 +3186,12 @@
 
   function renderInspectorPanel(state) {
     var panel = createEl('section', 'persona-lab-panel compact');
-    panel.appendChild(createEl('h2', null, 'Draft Validation'));
+    appendSectionHeading(
+      panel,
+      'h2',
+      'Test & Diagnostics',
+      'Validation, compiled payloads, saved prompt snapshots, and latest test run results.'
+    );
     if (!state.current || !state.current.validation) {
       panel.appendChild(createEl('div', 'persona-lab-empty', 'Validation data will appear here once a persona is loaded.'));
       return panel;
@@ -3316,6 +3910,91 @@
     return overlay;
   }
 
+  function renderCustomSkillEditorModal(state) {
+    if (!state.skillEditorOpen) {
+      return null;
+    }
+
+    var skills = ensureArray(state.form && state.form.customSkills);
+    var skill = skills[state.skillEditorIndex];
+
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeCustomSkillEditor(state);
+      }
+    });
+
+    var modal = createEl('div', 'persona-lab-modal');
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Custom skill'));
+    copy.appendChild(createEl('h2', null, skill ? (skill.title || 'Edit skill content') : 'Edit skill content'));
+    copy.appendChild(
+      createEl(
+        'p',
+        null,
+        skill
+          ? 'Edit the markdown instructions saved with this persona-local skill.'
+          : 'This skill is no longer available.'
+      )
+    );
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.addEventListener('click', function () {
+      closeCustomSkillEditor(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.skillEditorError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.skillEditorError));
+    }
+    if (skill) {
+      var editor = createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor');
+      editor.value = state.skillEditorDraft || '';
+      editor.placeholder = 'Add markdown instructions for when and how this custom skill should be used.';
+      bindInput(editor, function () {
+        state.skillEditorDraft = editor.value;
+      });
+      renderFieldGroup(body, 'Content', editor);
+    } else {
+      body.appendChild(createEl('div', 'persona-lab-empty', 'This skill is no longer available.'));
+    }
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        'Skill content is saved to the persona draft. Use the main Save button to persist the persona.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    var cancelButton = createEl('button', 'persona-lab-button', 'Cancel');
+    cancelButton.type = 'button';
+    cancelButton.addEventListener('click', function () {
+      closeCustomSkillEditor(state);
+    });
+    actions.appendChild(cancelButton);
+    var saveButton = createEl('button', 'persona-lab-button primary', 'Apply content');
+    saveButton.type = 'button';
+    saveButton.disabled = !skill;
+    saveButton.addEventListener('click', function () {
+      saveCustomSkillEditor(state);
+    });
+    actions.appendChild(saveButton);
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    return overlay;
+  }
+
   function renderRunDetailDrawer(state) {
     if (!state.runDetailOpen) {
       return null;
@@ -3441,7 +4120,7 @@
       createEl(
         'p',
         null,
-        'Edit the ProPaasAI persona draft through the Cloudflare dev control plane and launch single or parallel native MCPViews AI chats that test the exact saved configuration.'
+        'Shape the persona, choose its tools, and launch saved test runs from the same draft.'
       )
     );
     toolbar.appendChild(titleCopy);
@@ -3524,24 +4203,28 @@
     ensureRequiredModelDefaults(state, registries);
 
     var identity = createEl('section', 'persona-lab-panel');
-    identity.appendChild(createEl('h2', null, 'Identity'));
+    appendSectionHeading(
+      identity,
+      'h2',
+      'Overview',
+      'Name, ownership, and the short description people see when choosing this persona.'
+    );
     var identityGrid = createEl('div', 'persona-lab-grid');
-    var displayNameInput = createEl('input', 'persona-lab-input');
+    var displayNameInput = markFocusKey(createEl('input', 'persona-lab-input'), 'overview-display-name');
     displayNameInput.value = state.form.definition.displayName;
     bindInput(displayNameInput, function () {
       state.form.definition.displayName = displayNameInput.value;
       updateDirtyState(state);
-      renderState(state);
+      replaceSessionChrome(state, SESSION_LABEL + ' · ' + (displayNameInput.value || SESSION_LABEL));
     });
-    renderFieldGroup(identityGrid, 'Display name', displayNameInput);
-    var ownerInput = createEl('input', 'persona-lab-input');
+    renderFieldGroup(identityGrid, 'Display name', displayNameInput, 'The human-readable persona name. Example: Email Coordinator.');
+    var ownerInput = markFocusKey(createEl('input', 'persona-lab-input'), 'overview-owner');
     ownerInput.value = state.form.definition.owner;
     bindInput(ownerInput, function () {
       state.form.definition.owner = ownerInput.value;
       updateDirtyState(state);
-      renderState(state);
     });
-    renderFieldGroup(identityGrid, 'Owner', ownerInput);
+    renderFieldGroup(identityGrid, 'Owner', ownerInput, 'Team, person, or system responsible for maintaining this persona.');
     identity.appendChild(identityGrid);
     var definitionDescription = createEl('textarea', 'persona-lab-textarea');
     definitionDescription.value = state.form.definition.description;
@@ -3549,25 +4232,30 @@
       state.form.definition.description = definitionDescription.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(identity, 'Definition description', definitionDescription);
+    renderFieldGroup(identity, 'Description', definitionDescription, 'Short summary used in catalogs and handoffs.');
     content.appendChild(identity);
 
     var promptPanel = createEl('section', 'persona-lab-panel');
-    promptPanel.appendChild(createEl('h2', null, 'Prompt + Rules'));
+    appendSectionHeading(
+      promptPanel,
+      'h2',
+      'Instructions',
+      'The base behavior and ordered rules that guide every run of this persona.'
+    );
     var summaryInput = createEl('input', 'persona-lab-input');
     summaryInput.value = state.form.draft.summary;
     bindInput(summaryInput, function () {
       state.form.draft.summary = summaryInput.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'Draft summary', summaryInput);
+    renderFieldGroup(promptPanel, 'Summary', summaryInput, 'One sentence describing what this persona is for.');
     var draftDescription = createEl('textarea', 'persona-lab-textarea');
     draftDescription.value = state.form.draft.description;
     bindInput(draftDescription, function () {
       state.form.draft.description = draftDescription.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'Draft description', draftDescription);
+    renderFieldGroup(promptPanel, 'Draft notes', draftDescription, 'Internal authoring notes for this draft.');
     var promptInput = createEl('textarea', 'persona-lab-textarea');
     promptInput.style.minHeight = '220px';
     promptInput.value = state.form.prompt;
@@ -3575,7 +4263,7 @@
       state.form.prompt = promptInput.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'System prompt', promptInput);
+    renderFieldGroup(promptPanel, 'System prompt', promptInput, 'The main instruction block sent to the LLM.');
     appendSectionHeading(
       promptPanel,
       'h3',
@@ -3586,7 +4274,12 @@
     content.appendChild(promptPanel);
 
     var policyPanel = createEl('section', 'persona-lab-panel');
-    policyPanel.appendChild(createEl('h2', null, 'Models + Tooling'));
+    appendSectionHeading(
+      policyPanel,
+      'h2',
+      'Capabilities',
+      'Models, delegation behavior, sandboxes, connectors, and precise tool permissions.'
+    );
     var policyGrid = createEl('div', 'persona-lab-grid');
 
     renderFieldGroup(
@@ -3628,7 +4321,7 @@
         setError(state, stringifyError(error));
       }
     });
-    renderFieldGroup(policyPanel, 'Workflow-specific model overrides (JSON)', workflowModels);
+    renderFieldGroup(policyPanel, 'Workflow model overrides', workflowModels, 'Optional JSON map from workflow key to model ID.');
 
     state.form.draft.orchestration = normalizeOrchestration(state.form.draft.orchestration);
     var orchestration = state.form.draft.orchestration;
@@ -3650,7 +4343,12 @@
         { key: 'MANUAL', label: 'Manual' },
       ];
     }
-    policyPanel.appendChild(createEl('h3', null, 'Orchestration'));
+    appendSectionHeading(
+      policyPanel,
+      'h3',
+      'Orchestration',
+      'Controls whether this persona can delegate to subagents, coordinate child runs, or run alone.'
+    );
     var orchestrationGrid = createEl('div', 'persona-lab-grid');
     renderFieldGroup(
       orchestrationGrid,
@@ -3697,6 +4395,53 @@
     renderFieldGroup(orchestrationGrid, 'Max depth', maxDepthInput);
     policyPanel.appendChild(orchestrationGrid);
 
+    var sandboxMode = createEl('select', 'persona-lab-select');
+    [
+      { value: 'disabled', label: 'Disabled' },
+      { value: 'brokered', label: 'Brokered Cloudflare sandbox' },
+    ].forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      if (state.form.draft.sandboxPolicy.mode === entry.value) option.selected = true;
+      sandboxMode.appendChild(option);
+    });
+    bindInput(sandboxMode, function () {
+      if (sandboxMode.value === 'brokered') {
+        state.form.draft.sandboxPolicy = {
+          mode: 'brokered',
+          provider: 'cloudflare-sandbox',
+          exportToolName:
+            state.form.draft.sandboxPolicy.exportToolName || 'finance_report_export',
+        };
+      } else {
+        state.form.draft.sandboxPolicy = { mode: 'disabled' };
+      }
+      updateDirtyState(state);
+      renderState(state);
+    });
+    renderFieldGroup(
+      policyPanel,
+      'Sandbox policy',
+      sandboxMode,
+      'Allows controlled execution tools for personas that need files, generated reports, or workspace operations.'
+    );
+    if (state.form.draft.sandboxPolicy.mode === 'brokered') {
+      var exportTool = createEl('input', 'persona-lab-input');
+      exportTool.value = state.form.draft.sandboxPolicy.exportToolName || '';
+      bindInput(exportTool, function () {
+        state.form.draft.sandboxPolicy.exportToolName = exportTool.value;
+        updateDirtyState(state);
+      });
+      renderFieldGroup(
+        policyPanel,
+        'Sandbox export tool',
+        exportTool,
+        'Stable snake_case tool name exposed for sandbox exports.'
+      );
+    }
+
+    state.form.draft.toolPolicy = ensureToolPolicyShape(state.form.draft.toolPolicy);
     var toolRegistry = ensureObject(registries.toolRegistry);
     var businessToolOptions = ensureArray(toolRegistry.businessToolOptions).length
       ? toolRegistry.businessToolOptions
@@ -3705,7 +4450,20 @@
       ? toolRegistry.connectorOptions
       : ensureArray(toolRegistry.connectors);
 
-    policyPanel.appendChild(createEl('h3', null, 'Allowed business tools'));
+    appendSectionHeading(
+      policyPanel,
+      'h3',
+      'Tools by ID',
+      'Preferred tool grants. Each ID follows connectorKey:toolName and remains stable for MCPViews-installed plugin tools.'
+    );
+    policyPanel.appendChild(buildRuntimeToolSelector(state, ensureArray(toolRegistry.runtimeToolOptions)));
+
+    appendSectionHeading(
+      policyPanel,
+      'h3',
+      'Static tools',
+      'Compatibility grants for first-party tools already known to the cloud backend.'
+    );
     policyPanel.appendChild(
       buildCheckboxGrid(
         businessToolOptions,
@@ -3720,7 +4478,12 @@
         }
       )
     );
-    policyPanel.appendChild(createEl('h3', null, 'Allowed connectors'));
+    appendSectionHeading(
+      policyPanel,
+      'h3',
+      'Connector grants',
+      'Broad connector-level access. Use the MCPViews Plugins connector only when this persona may use all installed plugin tools.'
+    );
     policyPanel.appendChild(
       buildCheckboxGrid(
         connectorOptions,
@@ -3741,8 +4504,8 @@
     appendSectionHeading(
       skillPanel,
       'h2',
-      'Skills + Workflows',
-      'Skills and workflow refs add reusable instructions that are bundled into the saved persona configuration.'
+      'Skills',
+      'Reusable instructions, prompt templates, variables, and workflow references bundled into the persona.'
     );
     appendSectionHeading(
       skillPanel,
@@ -3779,52 +4542,6 @@
       )
     );
 
-    var sandboxMode = createEl('select', 'persona-lab-select');
-    [
-      { value: 'disabled', label: 'Disabled' },
-      { value: 'brokered', label: 'Brokered Cloudflare sandbox' },
-    ].forEach(function (entry) {
-      var option = document.createElement('option');
-      option.value = entry.value;
-      option.textContent = entry.label;
-      if (state.form.draft.sandboxPolicy.mode === entry.value) option.selected = true;
-      sandboxMode.appendChild(option);
-    });
-    bindInput(sandboxMode, function () {
-      if (sandboxMode.value === 'brokered') {
-        state.form.draft.sandboxPolicy = {
-          mode: 'brokered',
-          provider: 'cloudflare-sandbox',
-          exportToolName:
-            state.form.draft.sandboxPolicy.exportToolName || 'finance_report_export',
-        };
-      } else {
-        state.form.draft.sandboxPolicy = { mode: 'disabled' };
-      }
-      updateDirtyState(state);
-      renderState(state);
-    });
-    renderFieldGroup(
-      skillPanel,
-      'Sandbox policy',
-      sandboxMode,
-      'Controls whether this persona can use the brokered execution sandbox. Example: Brokered Cloudflare sandbox for report generation tasks.'
-    );
-    if (state.form.draft.sandboxPolicy.mode === 'brokered') {
-      var exportTool = createEl('input', 'persona-lab-input');
-      exportTool.value = state.form.draft.sandboxPolicy.exportToolName || '';
-      bindInput(exportTool, function () {
-        state.form.draft.sandboxPolicy.exportToolName = exportTool.value;
-        updateDirtyState(state);
-      });
-      renderFieldGroup(
-        skillPanel,
-        'Sandbox export tool name',
-        exportTool,
-        'Tool name exposed for sandbox exports. Use a stable snake_case identifier. Example: finance_report_export.'
-      );
-    }
-
     appendSectionHeading(
       skillPanel,
       'h3',
@@ -3837,22 +4554,37 @@
       title: 'Human-friendly skill name shown in Persona Studio. Example: Renewal Risk Review.',
       summary: 'One sentence describing when this skill applies. Example: Use when assessing account renewal risks before customer outreach.',
       content: 'Markdown instructions passed to the persona. Example: include trigger conditions, required checks, and output format bullets.',
+      variables: 'Optional values collected before the skill prompt is generated.',
     };
     ensureArray(state.form.customSkills).forEach(function (skill, index) {
       var skillCard = createEl('div', 'persona-lab-skill');
       var skillHeader = createEl('div', 'persona-lab-skill-header');
       skillHeader.appendChild(createEl('strong', null, skill.title || ('Skill ' + (index + 1))));
+      var skillActions = createEl('div', 'persona-lab-skill-actions');
+      var edit = createEl('button', 'persona-lab-button', 'Edit');
+      edit.type = 'button';
+      edit.addEventListener('click', function () {
+        openCustomSkillEditor(state, index);
+      });
+      skillActions.appendChild(edit);
       var remove = createEl('button', 'persona-lab-button', 'Remove');
       remove.type = 'button';
       remove.addEventListener('click', function () {
+        if (state.skillEditorOpen && state.skillEditorIndex === index) {
+          state.skillEditorOpen = false;
+          state.skillEditorIndex = -1;
+          state.skillEditorDraft = '';
+          state.skillEditorError = '';
+        }
         state.form.customSkills.splice(index, 1);
         updateDirtyState(state);
         renderState(state);
       });
-      skillHeader.appendChild(remove);
+      skillActions.appendChild(remove);
+      skillHeader.appendChild(skillActions);
       skillCard.appendChild(skillHeader);
       ['key', 'title', 'summary'].forEach(function (field) {
-        var input = createEl('input', 'persona-lab-input');
+        var input = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-skill-' + index + '-' + field);
         input.value = skill[field] || '';
         bindInput(input, function () {
           skill[field] = input.value;
@@ -3860,14 +4592,13 @@
         });
         renderFieldGroup(skillCard, field, input, customSkillHelp[field]);
       });
-      var contentInput = createEl('textarea', 'persona-lab-textarea');
-      contentInput.style.minHeight = '160px';
-      contentInput.value = skill.content || '';
-      bindInput(contentInput, function () {
-        skill.content = contentInput.value;
-        updateDirtyState(state);
-      });
-      renderFieldGroup(skillCard, 'content', contentInput, customSkillHelp.content);
+      renderFieldGroup(
+        skillCard,
+        'content',
+        createEl('pre', 'persona-lab-skill-preview', compactSkillContent(skill.content)),
+        customSkillHelp.content
+      );
+      skillCard.appendChild(buildSkillVariableEditor(state, skill, index));
       skillList.appendChild(skillCard);
     });
     if (!state.form.customSkills.length) {
@@ -3882,7 +4613,12 @@
         title: 'New custom skill',
         summary: 'Describe what this skill adds.',
         content: 'Add markdown instructions here.',
+        variables: [],
       });
+      state.skillEditorOpen = true;
+      state.skillEditorIndex = state.form.customSkills.length - 1;
+      state.skillEditorDraft = 'Add markdown instructions here.';
+      state.skillEditorError = '';
       updateDirtyState(state);
       renderState(state);
     });
@@ -3908,6 +4644,7 @@
   function renderState(state) {
     if (!state.container) return;
     captureScrollPositions(state);
+    var activeState = captureActiveElementState(state);
     replaceSessionChrome(state, state.current && state.current.document
       ? SESSION_LABEL + ' · ' + state.current.document.definition.displayName
       : SESSION_LABEL);
@@ -3921,10 +4658,15 @@
     if (wizard) {
       state.container.appendChild(wizard);
     }
+    var skillEditor = renderCustomSkillEditorModal(state);
+    if (skillEditor) {
+      state.container.appendChild(skillEditor);
+    }
     var drawer = renderRunDetailDrawer(state);
     if (drawer) {
       state.container.appendChild(drawer);
     }
+    restoreActiveElementState(state, activeState);
     restoreScrollPositions(state);
   }
 
@@ -3935,6 +4677,9 @@
     renderState(state);
     if (!state.bootstrapLoaded && !state.bootstrapPromise) {
       fetchBootstrap(state);
+    }
+    if (!state.localMcpCatalogLoaded && !state.localMcpCatalogPromise) {
+      loadLocalMcpCatalog(state);
     }
   };
 })();
