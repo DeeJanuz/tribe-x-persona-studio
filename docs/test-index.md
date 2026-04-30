@@ -22,4 +22,12 @@ _(No tests yet. Tests will be documented here as they are created.)_
 
 ## E2E Tests
 
-_(No tests yet. Tests will be documented here as they are created.)_
+### MCPViews Relay Probe
+
+- Tool key for Persona Studio registration: `tribe-x-ai-plugin.relay-probe`
+- Runtime relay tool name: `tribe-x-ai-plugin__relay-probe`
+- Local MCP endpoint: `http://127.0.0.1:4877/mcp`
+- Start command from this repository: `node tools/relay-probe-server.mjs`
+- Headless relay executor for `scripts/persona-dev-run.ts`: `tools/relay-probe-executors.mjs`
+
+The probe echoes a caller-provided `marker` and optional `message`. Use it to validate that a consultant-owned MCPViews plugin tool can be registered in Persona Studio, selected on a persona, surfaced in the session-start relay catalog, and called through the desktop relay.

@@ -5,10 +5,12 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-04-23-persona-archive-controls-v1';
+  var RENDERER_VERSION = '2026-04-30-persona-asset-nav-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
+  var SYSTEM_PERSONA_GROUP = 'System';
+  var UNGROUPED_PERSONA_GROUP = 'Ungrouped';
   var FALLBACK_PERSONA_STUDIO_MODELS = [
     'google/gemini-3-flash-preview',
     'openai/gpt-5-mini',
@@ -58,6 +60,18 @@
     return 'persona-lab-default';
   }
 
+  function defaultCustomToolDraft() {
+    return {
+      toolKey: '',
+      label: '',
+      description: '',
+      connectorLabel: '',
+      connectorDescription: '',
+      operationKind: 'read',
+      metadataText: '{}',
+    };
+  }
+
   function getSessionState() {
     var globalState = getGlobalState();
     var sessionId = currentSessionId();
@@ -67,14 +81,22 @@
         loading: false,
         bootstrapLoaded: false,
         bootstrapPromise: null,
+        organizationId: null,
+        organizationName: '',
+        organizationKind: '',
         showArchivedPersonas: false,
+        navGroupExpansion: {},
         personas: [],
         registries: null,
+        assetRegistry: null,
         localMcpCatalog: null,
         localMcpCatalogLoaded: false,
         localMcpCatalogLoading: false,
         localMcpCatalogPromise: null,
         localMcpCatalogError: '',
+        customToolDraft: defaultCustomToolDraft(),
+        customToolRegistering: false,
+        customToolError: '',
         selectedPersonaKey: null,
         loadingPersona: false,
         personaPromise: null,
@@ -118,9 +140,56 @@
         skillEditorDraft: '',
         skillEditorError: '',
         skillVariableRowSequence: 0,
+        expandedCustomSkillIndex: -1,
       };
     }
     return globalState.sessions[sessionId];
+  }
+
+  function selectedOrganizationSnapshot() {
+    if (
+      window.__tribexAiState &&
+      typeof window.__tribexAiState.getSnapshot === 'function'
+    ) {
+      var snapshot = window.__tribexAiState.getSnapshot();
+      var organization = snapshot && snapshot.selectedOrganization;
+      if (organization && organization.id) {
+        return {
+          id: String(organization.id),
+          name: String(organization.name || organization.slug || organization.id),
+          kind: String(organization.kind || ''),
+        };
+      }
+    }
+    return { id: null, name: '', kind: '' };
+  }
+
+  function syncOrganizationContext(state) {
+    var organization = selectedOrganizationSnapshot();
+    if (
+      state.organizationId === organization.id &&
+      state.organizationName === organization.name &&
+      state.organizationKind === organization.kind
+    ) {
+      return false;
+    }
+    if (state.dirty && state.organizationId !== organization.id) {
+      setError(state, 'Organization changed. Unsaved persona edits were discarded so the catalog can reload.');
+    }
+    state.organizationId = organization.id;
+    state.organizationName = organization.name;
+    state.organizationKind = organization.kind;
+    state.bootstrapLoaded = false;
+    state.bootstrapPromise = null;
+    state.personas = [];
+    state.navGroupExpansion = {};
+    state.registries = null;
+    state.assetRegistry = null;
+    state.customToolDraft = defaultCustomToolDraft();
+    state.customToolRegistering = false;
+    state.customToolError = '';
+    clearSelectedPersona(state);
+    return true;
   }
 
   function ensureStyles() {
@@ -149,16 +218,28 @@
       '.persona-lab-nav-header strong{display:block;margin-top:4px;font-size:18px;line-height:1.2}',
       '.persona-lab-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary);font-size:12px;font-weight:700;line-height:1.3;user-select:none}',
       '.persona-lab-toggle input{width:16px;height:16px;accent-color:var(--accent-primary);cursor:pointer}',
-      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
+      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:4px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
       '.persona-lab-nav-list::-webkit-scrollbar,.persona-lab-content::-webkit-scrollbar,.persona-lab-modal::-webkit-scrollbar,.persona-lab-drawer-body::-webkit-scrollbar{width:8px;height:8px}',
       '.persona-lab-nav-list::-webkit-scrollbar-thumb,.persona-lab-content::-webkit-scrollbar-thumb,.persona-lab-modal::-webkit-scrollbar-thumb,.persona-lab-drawer-body::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
-      '.persona-lab-nav-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);cursor:pointer;display:flex;flex-direction:column;gap:7px;color:var(--text-primary);text-align:left;transition:border-color .15s ease,transform .15s ease,background .15s ease;animation:persona-lab-stagger-fade-in .24s ease both}',
-      '.persona-lab-nav-item:hover{border-color:var(--accent-primary);background:var(--bg-surface)}',
-      '.persona-lab-nav-item.active{border-color:var(--accent-primary);background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 55%),var(--bg-surface);transform:translateY(-1px)}',
+      '.persona-lab-nav-group{border-radius:8px;overflow:hidden}',
+      '.persona-lab-nav-group-summary{list-style:none;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:6px;min-height:28px;padding:4px 6px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}',
+      '.persona-lab-nav-group-summary::-webkit-details-marker{display:none}',
+      '.persona-lab-nav-group-summary:hover{background:var(--bg-surface-subtle);color:var(--text-primary)}',
+      '.persona-lab-nav-group-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-nav-group-count{font-size:10px;color:var(--text-tertiary);font-weight:800}',
+      '.persona-lab-nav-group-children{display:flex;flex-direction:column;gap:1px;margin:1px 0 7px 11px;padding-left:7px;border-left:1px solid var(--border-default)}',
+      '.persona-lab-nav-group-caret{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;color:var(--text-tertiary);font-size:12px;transition:transform .15s ease}',
+      '.persona-lab-nav-group[open]>.persona-lab-nav-group-summary .persona-lab-nav-group-caret{transform:rotate(90deg)}',
+      '.persona-lab-nav-item{appearance:none;width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;background:transparent;cursor:pointer;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:7px;color:var(--text-primary);text-align:left;transition:border-color .12s ease,background .12s ease,color .12s ease;animation:persona-lab-stagger-fade-in .18s ease both}',
+      '.persona-lab-nav-item:hover{background:var(--bg-surface-subtle);border-color:var(--border-default)}',
+      '.persona-lab-nav-item.active{border-color:rgba(129,140,248,.35);background:var(--accent-primary-ghost)}',
       '.persona-lab-nav-item.archived{opacity:.72}',
-      '.persona-lab-nav-item code{font-size:11px;color:var(--text-tertiary)}',
-      '.persona-lab-nav-item-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;font-size:14px;line-height:1.35}',
-      '.persona-lab-nav-item-meta{display:flex;flex-wrap:wrap;gap:6px}',
+      '.persona-lab-nav-file-icon{width:9px;height:11px;border:1px solid var(--text-tertiary);border-radius:2px;opacity:.78}',
+      '.persona-lab-nav-item-copy{display:flex;flex-direction:column;gap:2px;min-width:0}',
+      '.persona-lab-nav-item code{display:block;font-size:10px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-nav-item-title{min-width:0;font-weight:600;font-size:13px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-nav-item-meta{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}',
+      '.persona-lab-nav-item-meta .persona-lab-badge{padding:2px 6px;font-size:10px}',
       '.persona-lab-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;border:1px solid transparent;background:var(--bg-surface);color:var(--text-secondary);font-size:11px;font-weight:600;line-height:1.2}',
       '.persona-lab-badge.dirty{background:var(--color-warning-bg);color:var(--color-warning-text)}',
       '.persona-lab-badge.archived{background:var(--color-warning-bg);color:var(--color-warning-text)}',
@@ -173,6 +254,7 @@
       '.persona-lab-toolbar p{margin:8px 0 0;color:var(--text-secondary);max-width:760px;line-height:1.6}',
       '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
       '.persona-lab-button{appearance:none;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,color .15s ease}',
+      '.persona-lab-button.small{padding:7px 10px;border-radius:10px;font-size:12px}',
       '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface);transform:translateY(-1px)}',
       '.persona-lab-button.primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-primary-hover));border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(99,102,241,.28)}',
       '.persona-lab-button.danger{background:var(--color-error-bg);border-color:rgba(239,68,68,.25);color:var(--color-error-text)}',
@@ -193,10 +275,14 @@
       '.persona-lab-field label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
       '.persona-lab-field-label-row,.persona-lab-heading-row{display:flex;align-items:center;gap:8px;min-width:0}',
       '.persona-lab-heading-row h2,.persona-lab-heading-row h3{min-width:0}',
-      '.persona-lab-tooltip{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:19px;height:19px;border-radius:999px;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-secondary);font-size:12px;font-weight:800;line-height:1;cursor:help}',
+      '.persona-lab-tooltip{appearance:none;position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:19px;height:19px;padding:0;border-radius:999px;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-secondary);font-size:12px;font-weight:800;line-height:1;cursor:help}',
       '.persona-lab-tooltip:hover,.persona-lab-tooltip:focus-visible{border-color:var(--accent-primary);color:var(--text-primary);outline:none}',
-      '.persona-lab-tooltip-popover{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) translateY(4px);z-index:5;width:min(320px,calc(100vw - 40px));padding:10px 12px;border-radius:12px;border:1px solid var(--glass-border);background:var(--glass-bg-heavy);box-shadow:var(--glass-shadow-elevated);color:var(--text-secondary);font-size:12px;font-weight:500;line-height:1.45;text-transform:none;letter-spacing:0;text-align:left;white-space:normal;opacity:0;pointer-events:none;transition:opacity .12s ease,transform .12s ease}',
-      '.persona-lab-tooltip:hover .persona-lab-tooltip-popover,.persona-lab-tooltip:focus-visible .persona-lab-tooltip-popover{opacity:1;transform:translateX(-50%) translateY(0)}',
+      '.persona-lab-floating-tooltip{position:fixed;left:0;top:0;z-index:10050;width:min(360px,calc(100vw - 32px));padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,17,23,.96);box-shadow:0 18px 48px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);color:rgba(255,255,255,.76);font-family:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;font-weight:500;line-height:1.5;text-align:left;white-space:normal;opacity:0;pointer-events:none;transform:translateY(4px);transition:opacity .12s ease,transform .12s ease}',
+      '.persona-lab-floating-tooltip.visible{opacity:1;transform:translateY(0)}',
+      '.persona-lab-floating-tooltip p{margin:0}',
+      '.persona-lab-floating-tooltip-example{margin-top:9px;padding:9px 10px;border-left:2px solid #818cf8;border-radius:10px;background:rgba(129,140,248,.13);color:rgba(255,255,255,.92);font-weight:650}',
+      'html[data-theme="light"] .persona-lab-floating-tooltip{border-color:rgba(0,0,0,.12);background:rgba(255,255,255,.98);box-shadow:0 18px 48px rgba(15,23,42,.16),inset 0 1px 0 rgba(255,255,255,.7);color:rgba(0,0,0,.68)}',
+      'html[data-theme="light"] .persona-lab-floating-tooltip-example{background:rgba(99,102,241,.11);color:rgba(0,0,0,.86)}',
       '.persona-lab-input,.persona-lab-textarea,.persona-lab-select{width:100%;border:1px solid var(--glass-border);border-radius:14px;padding:12px 14px;background:var(--bg-surface-subtle);color:var(--text-primary)}',
       '.persona-lab-model-select{position:relative;width:100%}',
       '.persona-lab-model-select.open{z-index:10002}',
@@ -239,6 +325,12 @@
       '.persona-lab-rule-item span{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary);font-weight:800}',
       '.persona-lab-rule-item strong{font-size:13px;line-height:1.35;font-weight:600;color:var(--text-primary)}',
       '.persona-lab-rule-controls{display:flex;flex-direction:column;gap:10px;min-width:0}',
+      '.persona-lab-details{overflow:hidden}',
+      '.persona-lab-details-summary{list-style:none;cursor:pointer}',
+      '.persona-lab-details-summary::-webkit-details-marker{display:none}',
+      '.persona-lab-details-caret{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:var(--text-tertiary);font-size:13px;transition:transform .15s ease}',
+      '.persona-lab-details[open]>.persona-lab-details-summary .persona-lab-details-caret{transform:rotate(90deg)}',
+      '.persona-lab-details-body{display:flex;flex-direction:column;gap:12px;padding:14px;border-top:1px solid var(--glass-border)}',
       '.persona-lab-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}',
       '.persona-lab-choice{display:flex;align-items:flex-start;gap:10px;border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-choice input{margin-top:2px}',
@@ -250,10 +342,13 @@
       '.persona-lab-runtime-tools{display:flex;flex-direction:column;gap:12px}',
       '.persona-lab-tool-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
       '.persona-lab-tool-toolbar .persona-lab-input{max-width:360px}',
+      '.persona-lab-tool-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
       '.persona-lab-tool-group{border:1px solid var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);overflow:hidden}',
-      '.persona-lab-tool-group-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--glass-border);background:var(--bg-surface-subtle)}',
+      '.persona-lab-tool-group-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:flex-start;gap:10px;padding:12px 14px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-tool-group[open]>.persona-lab-tool-group-header{border-bottom:1px solid var(--glass-border)}',
       '.persona-lab-tool-group-header strong{display:block;font-size:14px;line-height:1.3}',
       '.persona-lab-tool-group-header code{display:block;margin-top:4px;font-size:11px;color:var(--text-tertiary)}',
+      '.persona-lab-tool-group-meta{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}',
       '.persona-lab-tool-list{display:flex;flex-direction:column}',
       '.persona-lab-tool-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 14px;border-top:1px solid var(--border-subtle)}',
       '.persona-lab-tool-row:first-child{border-top:none}',
@@ -268,6 +363,9 @@
       '.persona-lab-variable-required{align-self:center;margin-bottom:11px}',
       '.persona-lab-section-list{display:flex;flex-direction:column;gap:12px}',
       '.persona-lab-skill{border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-skill.persona-lab-details{padding:0}',
+      '.persona-lab-skill>.persona-lab-details-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:14px}',
+      '.persona-lab-skill>.persona-lab-details-summary strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.persona-lab-skill-header{display:flex;align-items:center;justify-content:space-between;gap:12px}',
       '.persona-lab-skill-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
       '.persona-lab-skill-preview{margin:0;max-height:132px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-border);border-radius:14px;padding:12px;background:rgba(15,23,42,.38);color:var(--text-secondary);font-size:12px;line-height:1.5}',
@@ -282,6 +380,9 @@
       '.persona-lab-empty{padding:24px;border:1px dashed var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-run-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}',
       '.persona-lab-run-card{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(180deg,rgba(129,140,248,.08),transparent 45%),var(--glass-bg);animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-run-card.persona-lab-details{padding:0;gap:0}',
+      '.persona-lab-run-card>.persona-lab-details-summary{padding:18px}',
+      '.persona-lab-run-card>.persona-lab-details-body{padding:18px}',
       '.persona-lab-run-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}',
       '.persona-lab-run-card-header strong{display:block;font-size:19px;line-height:1.15}',
       '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
@@ -331,20 +432,20 @@
     if (typeof error === 'string') return error;
     if (error.message) {
       if (/First-party AI base URL is not configured/i.test(error.message)) {
-        return 'Persona Studio is configured for the ProPaasAI Cloudflare dev control plane. Set `first_party_ai.base_url` in `~/.mcpviews/config.json` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
+        return 'Persona Studio is configured for the TribeX AI Cloudflare dev control plane. Set `first_party_ai.base_url` in `~/.mcpviews/config.json` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
       }
       if (
         /127\.0\.0\.1:3000\/admin\/persona-studio\/personas/i.test(error.message) ||
         /failed to connect to 127\.0\.0\.1 port 3000/i.test(error.message) ||
         /error sending request for url \(http:\/\/127\.0\.0\.1:3000/i.test(error.message)
       ) {
-        return 'Persona Studio is still pointed at the old local ProPaasAI API host (' + LOCAL_CONTROL_PLANE_URL + '). Update MCPViews `first_party_ai.base_url` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
+        return 'Persona Studio is still pointed at the old local API host (' + LOCAL_CONTROL_PLANE_URL + '). Update MCPViews `first_party_ai.base_url` to ' + DEV_CONTROL_PLANE_URL + ', then refresh this tab.';
       }
       if (
         /dev\.app\.tribexai\.com\/admin\/persona-studio/i.test(error.message) &&
         /local-only|not deployed in the Cloudflare control plane/i.test(error.message)
       ) {
-        return 'Persona Studio reached ' + DEV_CONTROL_PLANE_URL + ', but that deployment is still rejecting `/admin/persona-studio/*`. Deploy the Persona Studio API surface from `../ProPaasai` to the Cloudflare dev environment, then refresh this tab.';
+        return 'Persona Studio reached ' + DEV_CONTROL_PLANE_URL + ', but that deployment is still rejecting `/admin/persona-studio/*`. Deploy the Persona Studio API surface from `../tribe-x-ai` to the Cloudflare dev environment, then refresh this tab.';
       }
       if (
         /HTTP (401|403) from 'https:\/\/dev\.app\.tribexai\.com/i.test(error.message)
@@ -408,6 +509,7 @@
         displayName: detail.document.definition.displayName || '',
         description: detail.document.definition.description || '',
         owner: detail.document.definition.owner || 'platform',
+        metadataGroup: personaMetadataGroup(detail.document.definition),
       },
       draft: {
         summary: detail.document.draft.summary || '',
@@ -522,6 +624,26 @@
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   }
 
+  function isSystemPersonaSource(persona) {
+    var source = ensureObject(persona);
+    return !source.ownerOrganizationId && String(source.owner || 'platform').toLowerCase() !== 'consultant';
+  }
+
+  function normalizePersonaMetadataGroup(value, persona) {
+    var text = String(value || '').trim();
+    if (text) return text;
+    return isSystemPersonaSource(persona) ? SYSTEM_PERSONA_GROUP : '';
+  }
+
+  function personaMetadataGroup(persona) {
+    var source = ensureObject(persona);
+    var metadata = ensureObject(source.metadata);
+    return normalizePersonaMetadataGroup(
+      source.metadataGroup || source.group || metadata.metadataGroup || metadata.group,
+      source
+    );
+  }
+
   function normalizeSkillVariable(variable, index) {
     var source = ensureObject(variable);
     var name = String(source.name || source.key || source.variableName || '').trim();
@@ -607,18 +729,41 @@
 
   function normalizeChoiceOption(item) {
     if (typeof item === 'string') {
-      return { key: item, label: item, description: '' };
+      return {
+        key: item,
+        value: item,
+        displayKey: item,
+        label: item,
+        description: '',
+        group: '',
+        kindLabel: '',
+        toolCount: null,
+        sourceBadge: '',
+        installed: null,
+        authRequired: null,
+        variables: [],
+      };
     }
     if (!item || typeof item !== 'object') return null;
     var key = item.key || item.name;
     if (!key) return null;
+    var metadata = ensureObject(item.metadata);
+    var metadataGroup = String(
+      item.metadataGroup || item.group || metadata.metadataGroup || metadata.group || ''
+    ).trim();
     return {
       key: String(key),
+      value: String(item.value || item.selectionKey || key),
+      displayKey: String(item.displayKey || item.registryKey || key),
       label: String(item.label || item.name || key),
       description: item.description ? String(item.description) : '',
-      group: item.group ? String(item.group) : '',
+      group: metadataGroup,
+      kindLabel: item.kindLabel ? String(item.kindLabel) : '',
       toolCount: Number.isFinite(Number(item.toolCount)) ? Number(item.toolCount) : null,
-      variables: ensureArray(item.variables).map(normalizeSkillVariable),
+      sourceBadge: item.sourceBadge ? String(item.sourceBadge) : '',
+      installed: typeof item.installed === 'boolean' ? item.installed : null,
+      authRequired: typeof item.authRequired === 'boolean' ? item.authRequired : null,
+      variables: ensureArray(item.variables || metadata.variables).map(normalizeSkillVariable),
     };
   }
 
@@ -627,22 +772,273 @@
     var seen = {};
     ensureArray(items).forEach(function (item) {
       var option = normalizeChoiceOption(item);
-      if (!option || seen[option.key]) return;
-      seen[option.key] = true;
+      if (!option || seen[option.value]) return;
+      seen[option.value] = true;
       options.push(option);
     });
-    ensureArray(selected).forEach(function (key) {
-      if (!key || seen[key]) return;
-      seen[key] = true;
+    ensureArray(selected).forEach(function (value) {
+      if (!value || seen[value]) return;
+      seen[value] = true;
       options.push({
-        key: key,
-        label: key,
-        description: 'Currently selected but not returned by the ProPaasAI registry.',
+        key: value,
+        value: value,
+        displayKey: value,
+        label: value,
+        description: 'Currently selected but not returned by the TribeX AI registry.',
         group: 'Unregistered',
+        kindLabel: '',
         toolCount: null,
+        sourceBadge: '',
+        installed: null,
+        authRequired: null,
         variables: [],
       });
     });
+    return options;
+  }
+
+  function assetRegistryForState(state, registries) {
+    return ensureObject((registries && registries.assetRegistry) || state.assetRegistry);
+  }
+
+  function choiceOptionsFromAssets(assetRegistry, assetType, fallbackItems, keyResolver) {
+    var assets = ensureArray(assetRegistry && assetRegistry.assets)
+      .filter(function (asset) {
+        return asset && asset.assetType === assetType && asset.status !== 'ARCHIVED';
+      })
+      .map(function (asset) {
+        var key = keyResolver ? keyResolver(asset) : asset.key;
+        if (!key) return null;
+        var metadata = ensureObject(asset.metadata);
+        var metadataGroup = String(
+          asset.metadataGroup || asset.group || metadata.metadataGroup || metadata.group || ''
+        ).trim();
+        var toolCount = Number(asset.toolCount !== undefined ? asset.toolCount : metadata.toolCount);
+        return {
+          key: String(key),
+          label: String(asset.label || key),
+          description: asset.description ? String(asset.description) : '',
+          group: metadataGroup,
+          toolCount: Number.isFinite(toolCount) ? toolCount : null,
+          sourceBadge: asset.sourceBadge || asset.source || '',
+          installed: typeof asset.installed === 'boolean' ? asset.installed : null,
+          authRequired: typeof asset.authRequired === 'boolean' ? asset.authRequired : null,
+          metadata: metadata,
+          variables: ensureArray(metadata.variables).map(normalizeSkillVariable),
+        };
+      })
+      .filter(Boolean);
+    return assets.length ? assets : fallbackItems;
+  }
+
+  function isRegisteredRuntimeAsset(asset) {
+    if (!asset || asset.assetType !== 'STATIC_TOOL' || asset.status === 'ARCHIVED') return false;
+    var metadata = ensureObject(asset.metadata);
+    var consultantOwned = Boolean(
+      asset.source === 'CONSULTANT' ||
+      asset.ownerOrganizationId ||
+      asset.pluginPackageId ||
+      metadata.registrationMode === 'manual-mcpviews-plugin'
+    );
+    return consultantOwned && Boolean(
+      asset.runtimeToolId ||
+      (asset.connectorKey && asset.toolName)
+    );
+  }
+
+  function assetRegistryWithoutRegisteredRuntimeAssets(assetRegistry) {
+    return Object.assign({}, ensureObject(assetRegistry), {
+      assets: ensureArray(assetRegistry && assetRegistry.assets).filter(function (asset) {
+        return !isRegisteredRuntimeAsset(asset);
+      }),
+    });
+  }
+
+  function capabilityKindLabel(kind) {
+    return kind === 'workflow' ? 'Workflow' : 'Instruction';
+  }
+
+  function normalizeCapabilityKind(value, fallback) {
+    var normalized = String(value || fallback || '').trim().toLowerCase();
+    return normalized === 'workflow' ? 'workflow' : 'instruction';
+  }
+
+  function capabilitySelectionValue(kind, key) {
+    return normalizeCapabilityKind(kind) + ':' + String(key || '').trim();
+  }
+
+  function selectedCapabilityValues(form) {
+    var draft = ensureObject(form && form.draft);
+    return ensureArray(draft.builtInSkills)
+      .map(function (key) { return capabilitySelectionValue('instruction', key); })
+      .concat(
+        ensureArray(draft.workflowRefs).map(function (key) {
+          return capabilitySelectionValue('workflow', key);
+        })
+      );
+  }
+
+  function toggleCapabilitySelection(state, value) {
+    var text = String(value || '');
+    var separator = text.indexOf(':');
+    var kind = normalizeCapabilityKind(separator >= 0 ? text.slice(0, separator) : 'instruction');
+    var key = separator >= 0 ? text.slice(separator + 1) : text;
+    if (!key) return;
+    if (kind === 'workflow') {
+      state.form.draft.workflowRefs = toggleListValue(state.form.draft.workflowRefs, key);
+    } else {
+      state.form.draft.builtInSkills = toggleListValue(state.form.draft.builtInSkills, key);
+    }
+  }
+
+  function capabilityOptionFromSource(source, fallbackKind) {
+    var item = ensureObject(source);
+    var metadata = ensureObject(item.metadata);
+    var key = String(item.key || item.name || '').trim();
+    if (!key) return null;
+    var kind = normalizeCapabilityKind(
+      item.capabilityKind || item.kind || metadata.capabilityKind,
+      fallbackKind
+    );
+    return {
+      key: key,
+      value: capabilitySelectionValue(kind, key),
+      displayKey: key,
+      label: String(item.label || item.name || key),
+      description: item.description ? String(item.description) : '',
+      group: String(
+        item.metadataGroup || item.group || metadata.metadataGroup || metadata.group || 'Skills'
+      ).trim(),
+      kindLabel: capabilityKindLabel(kind),
+      variables: ensureArray(item.variables || metadata.variables).map(normalizeSkillVariable),
+    };
+  }
+
+  function capabilityOptionsFromRegistries(assetRegistry, registries) {
+    var assetOptions = ensureArray(assetRegistry && assetRegistry.assets)
+      .filter(function (asset) {
+        return asset && (asset.assetType === 'SKILL' || asset.assetType === 'WORKFLOW') && asset.status !== 'ARCHIVED';
+      })
+      .map(function (asset) {
+        return capabilityOptionFromSource(
+          asset,
+          asset.assetType === 'WORKFLOW' ? 'workflow' : 'instruction'
+        );
+      })
+      .filter(Boolean);
+    if (assetOptions.length) return assetOptions;
+
+    var registryCapabilities = ensureArray(registries.capabilities)
+      .map(function (capability) {
+        return capabilityOptionFromSource(capability, capability.kind);
+      })
+      .filter(Boolean);
+    if (registryCapabilities.length) return registryCapabilities;
+
+    return ensureArray(registries.builtInSkills)
+      .map(function (skill) { return capabilityOptionFromSource(skill, 'instruction'); })
+      .filter(Boolean)
+      .concat(
+        ensureArray(registries.workflows)
+          .map(function (workflow) {
+            return capabilityOptionFromSource(
+              typeof workflow === 'string' ? { key: workflow, label: workflow } : workflow,
+              'workflow'
+            );
+          })
+          .filter(Boolean)
+      );
+  }
+
+  function toolSelectionValue(kind, key) {
+    return String(kind || 'tool') + ':' + String(key || '').trim();
+  }
+
+  function selectedToolValues(form) {
+    var toolPolicy = ensureObject(form && form.draft && form.draft.toolPolicy);
+    return ensureArray(toolPolicy.allowedBusinessTools)
+      .map(function (key) { return toolSelectionValue('business', key); })
+      .concat(
+        ensureArray(toolPolicy.allowedRuntimeToolIds).map(function (id) {
+          return toolSelectionValue('runtime', id);
+        })
+      );
+  }
+
+  function toggleToolSelection(state, value) {
+    var text = String(value || '');
+    var separator = text.indexOf(':');
+    var kind = separator >= 0 ? text.slice(0, separator) : 'business';
+    var key = separator >= 0 ? text.slice(separator + 1) : text;
+    if (!key) return;
+    state.form.draft.toolPolicy = ensureToolPolicyShape(state.form.draft.toolPolicy);
+    if (kind === 'runtime') {
+      state.form.draft.toolPolicy.allowedRuntimeToolIds = toggleListValue(
+        state.form.draft.toolPolicy.allowedRuntimeToolIds,
+        key
+      );
+      return;
+    }
+    state.form.draft.toolPolicy.allowedBusinessTools = toggleListValue(
+      state.form.draft.toolPolicy.allowedBusinessTools,
+      key
+    );
+  }
+
+  function unifiedToolOptions(businessToolOptions, runtimeToolOptions, selectedRuntimeToolIds) {
+    var options = [];
+    var seen = {};
+    var selectedRuntimeSet = new Set(
+      ensureArray(selectedRuntimeToolIds).map(function (id) { return String(id); })
+    );
+    ensureArray(businessToolOptions).forEach(function (item) {
+      var option = normalizeChoiceOption(item);
+      if (!option || !option.key) return;
+      var value = toolSelectionValue('business', option.key);
+      if (seen[value]) return;
+      seen[value] = true;
+      options.push(Object.assign({}, option, {
+        value: value,
+        displayKey: option.displayKey || option.key,
+        group: option.group || 'Built-in tools',
+        kindLabel: option.kindLabel || 'Built-in',
+      }));
+    });
+
+    ensureArray(runtimeToolOptions)
+      .filter(function (option) {
+        return option && (option.source !== 'static' || selectedRuntimeSet.has(String(option.id || '')));
+      })
+      .forEach(function (option) {
+        var id = String(option.id || '').trim();
+        if (!id) return;
+        var value = toolSelectionValue('runtime', id);
+        if (seen[value]) return;
+        seen[value] = true;
+        options.push({
+          key: id,
+          value: value,
+          displayKey: option.toolName || id,
+          label: String(option.label || humanizeIdentifier(option.toolName || id)),
+          description: String(option.description || ''),
+          group: option.source === 'static'
+            ? 'Advanced selections'
+            : option.source === 'registered'
+              ? String(option.group || option.connectorLabel || 'Registered tools')
+            : String(option.connectorLabel || option.group || 'Connected tools'),
+          kindLabel: option.source === 'static'
+            ? 'Advanced'
+            : option.source === 'registered'
+              ? 'Registered'
+            : option.source === 'unavailable' ? 'Unavailable' : 'Connected',
+          toolCount: null,
+          sourceBadge: option.authState || '',
+          installed: null,
+          authRequired: option.authState === 'auth required',
+          variables: [],
+        });
+      });
+
     return options;
   }
 
@@ -962,6 +1358,208 @@
       throw new Error((label || 'JSON value') + ' must be a JSON object.');
     }
     return parsed;
+  }
+
+  function parseCustomToolKey(value) {
+    var parts = String(value || '')
+      .trim()
+      .split('.')
+      .map(function (part) { return part.trim().toLowerCase(); })
+      .filter(Boolean);
+    if (parts.length < 2 || !parts[0] || !parts.slice(1).join('.')) {
+      throw new Error('Tool key must use namespace.tool-name format.');
+    }
+    return {
+      connectorKey: parts[0],
+      toolName: parts.slice(1).join('.'),
+      toolKey: parts[0] + '.' + parts.slice(1).join('.'),
+    };
+  }
+
+  function buildCustomToolRegistrationPayload(state) {
+    var draft = Object.assign(defaultCustomToolDraft(), ensureObject(state.customToolDraft));
+    var parsedKey = parseCustomToolKey(draft.toolKey);
+    var metadata = parseJsonObject(draft.metadataText, {}, 'Tool metadata');
+    var metadataInputSchema = ensureObject(metadata.inputSchema);
+    var payload = {
+      toolKey: parsedKey.toolKey,
+      label: String(draft.label || '').trim() || humanizeIdentifier(parsedKey.toolName),
+      description: String(draft.description || '').trim() || null,
+      connectorLabel: String(draft.connectorLabel || '').trim() || humanizeIdentifier(parsedKey.connectorKey),
+      connectorDescription: String(draft.connectorDescription || '').trim() || null,
+      operationKind: draft.operationKind || 'read',
+      metadata: metadata,
+    };
+    if (Object.keys(metadataInputSchema).length) {
+      payload.inputSchema = metadataInputSchema;
+    }
+    return payload;
+  }
+
+  function consultantOrganizationIdForCustomToolRegistration(state) {
+    if (state.organizationKind === 'CONSULTANT' && state.organizationId) {
+      return state.organizationId;
+    }
+    var assetRegistry = assetRegistryForState(state);
+    var consultantContext = ensureObject(assetRegistry.consultantContext);
+    return String(
+      consultantContext.consultantOrganizationId ||
+      consultantContext.organizationId ||
+      consultantContext.id ||
+      ''
+    ).trim();
+  }
+
+  function buildManualPluginManifestUrl(connectorKey) {
+    return 'https://mcpviews.local/manual/' + encodeURIComponent(connectorKey) + '/manifest.json';
+  }
+
+  function customToolRegistrationFallbackNeeded(error) {
+    var message = stringifyError(error);
+    return /HTTP 404\b/i.test(message) && /persona-studio\/custom-tools/i.test(message);
+  }
+
+  function registerCustomMcpToolViaAssetApis(state, payload) {
+    var parsedKey = parseCustomToolKey(payload.toolKey);
+    var connectorKey = parsedKey.connectorKey;
+    var toolName = parsedKey.toolName;
+    var runtimeToolId = canonicalRuntimeToolId(connectorKey, toolName);
+    var consultantOrganizationId = consultantOrganizationIdForCustomToolRegistration(state);
+    if (!consultantOrganizationId) {
+      return Promise.reject(new Error('No consultant organization is available for manual tool registration.'));
+    }
+
+    var metadata = ensureObject(payload.metadata);
+    var inputSchema = ensureObject(payload.inputSchema || metadata.inputSchema);
+    var manifestVersion = String(payload.manifestVersion || 'manual');
+    var connectorLabel = String(payload.connectorLabel || humanizeIdentifier(connectorKey));
+    var connectorDescription = payload.connectorDescription || payload.description || null;
+    var registrationMetadata = {
+      registrationMode: 'manual-mcpviews-plugin',
+      registeredVia: 'PERSONA_STUDIO',
+      relay: 'mcpviews',
+      connectorKey: connectorKey,
+      toolName: toolName,
+      toolKey: parsedKey.toolKey,
+      runtimeToolId: runtimeToolId,
+    };
+    var manifestHash = ('manual:' + connectorKey + ':' + manifestVersion).slice(0, 200);
+    var packageId = null;
+    var connectorAssetId = null;
+    var toolAssetId = null;
+
+    return request(
+      'POST',
+      '/organizations/' + encodeURIComponent(consultantOrganizationId) + '/persona-studio/plugin-packages',
+      {
+        pluginId: connectorKey,
+        pluginName: connectorKey,
+        displayName: connectorLabel,
+        description: connectorDescription,
+        manifestUrl: buildManualPluginManifestUrl(connectorKey),
+        downloadUrl: null,
+        manifestVersion: manifestVersion,
+        manifestHash: manifestHash,
+        metadata: registrationMetadata,
+      }
+    )
+      .then(function (result) {
+        packageId = result && result.pluginPackage && result.pluginPackage.id
+          ? result.pluginPackage.id
+          : null;
+        return request(
+          'POST',
+          '/organizations/' + encodeURIComponent(consultantOrganizationId) + '/persona-studio/assets',
+          {
+            assetType: 'CONNECTOR_GRANT',
+            key: connectorKey,
+            label: connectorLabel,
+            description: connectorDescription,
+            pluginPackageId: packageId,
+            pluginId: connectorKey,
+            pluginName: connectorKey,
+            connectorKey: connectorKey,
+            toolName: null,
+            manifestVersion: manifestVersion,
+            runtimeToolId: null,
+            metadata: Object.assign({}, registrationMetadata, {
+              registeredToolKeys: [parsedKey.toolKey],
+              namespaces: [connectorKey],
+              toolCount: 1,
+              group: metadata.group || 'Registered services',
+            }),
+          }
+        );
+      })
+      .then(function (result) {
+        connectorAssetId = result && result.asset && result.asset.id ? result.asset.id : null;
+        return request(
+          'POST',
+          '/organizations/' + encodeURIComponent(consultantOrganizationId) + '/persona-studio/assets',
+          {
+            assetType: 'STATIC_TOOL',
+            key: parsedKey.toolKey,
+            label: payload.label || humanizeIdentifier(toolName),
+            description: payload.description || null,
+            pluginPackageId: packageId,
+            pluginId: connectorKey,
+            pluginName: connectorKey,
+            connectorKey: connectorKey,
+            toolName: toolName,
+            manifestVersion: manifestVersion,
+            runtimeToolId: runtimeToolId,
+            metadata: Object.assign({}, metadata, registrationMetadata, {
+              operationKind: payload.operationKind || 'read',
+              group: metadata.group || 'Registered tools',
+            }, Object.keys(inputSchema).length ? { inputSchema: inputSchema } : {}),
+          }
+        );
+      })
+      .then(function (result) {
+        toolAssetId = result && result.asset && result.asset.id ? result.asset.id : null;
+        if (state.organizationId === consultantOrganizationId) {
+          return null;
+        }
+        return request(
+          'POST',
+          '/organizations/' + encodeURIComponent(consultantOrganizationId) + '/persona-studio/install-grants',
+          {
+            customerOrganizationId: state.organizationId,
+            pluginPackageId: packageId,
+            connectorKeys: [connectorKey],
+            runtimeToolIds: [runtimeToolId],
+            expiresAt: null,
+            metadata: Object.assign({}, registrationMetadata, {
+              registeredToolKeys: [parsedKey.toolKey],
+            }),
+          }
+        );
+      })
+      .then(function () {
+        var enablements = [connectorAssetId, toolAssetId]
+          .filter(Boolean)
+          .map(function (assetId) {
+            return request(
+              'PUT',
+              '/organizations/' + encodeURIComponent(state.organizationId) + '/persona-studio/enablements',
+              {
+                assetId: assetId,
+                enabled: true,
+                metadata: registrationMetadata,
+              }
+            );
+          });
+        return Promise.all(enablements);
+      })
+      .then(function () {
+        return {
+          pluginPackage: packageId ? { id: packageId } : null,
+          connectorKey: connectorKey,
+          toolName: toolName,
+          toolKey: parsedKey.toolKey,
+          runtimeToolId: runtimeToolId,
+        };
+      });
   }
 
   function storage() {
@@ -1303,6 +1901,38 @@
       .filter(Boolean);
   }
 
+  function registeredRuntimeToolOptionsFromAssetRegistry(assetRegistry) {
+    return ensureArray(assetRegistry && assetRegistry.assets)
+      .filter(isRegisteredRuntimeAsset)
+      .map(function (asset) {
+        var metadata = ensureObject(asset.metadata);
+        var connectorKey = String(asset.connectorKey || metadata.connectorKey || asset.pluginId || '').trim();
+        var toolName = String(asset.toolName || metadata.toolName || '').trim();
+        if (!toolName && asset.key && String(asset.key).indexOf('.') > 0) {
+          toolName = String(asset.key).split('.').slice(1).join('.');
+        }
+        if (!connectorKey || !toolName) return null;
+        return normalizeRuntimeToolOption(
+          {
+            id: asset.runtimeToolId || canonicalRuntimeToolId(connectorKey, toolName),
+            key: toolName,
+            toolName: toolName,
+            connectorKey: connectorKey,
+            connectorLabel: metadata.connectorLabel || asset.pluginName || humanizeIdentifier(connectorKey),
+            label: asset.label || metadata.label || humanizeIdentifier(toolName),
+            description: asset.description || metadata.description || '',
+            operationKind: metadata.operationKind || 'read',
+            authState: asset.installed === false ? 'not installed' : 'registered',
+            group: metadata.group || 'Registered tools',
+          },
+          { key: connectorKey, label: metadata.connectorLabel || asset.pluginName || humanizeIdentifier(connectorKey) },
+          'registered',
+          metadata.group || 'Registered tools'
+        );
+      })
+      .filter(Boolean);
+  }
+
   function collectLocalRuntimeToolOptions(catalog) {
     var options = [];
     ensureArray(catalog && catalog.connectors).forEach(function (connector) {
@@ -1357,11 +1987,14 @@
 
   function runtimeToolOptionsForState(state, registries) {
     var toolRegistry = ensureObject(registries && registries.toolRegistry);
+    var assetRegistry = assetRegistryForState(state, registries);
     var selected = state.form && state.form.draft && state.form.draft.toolPolicy
       ? state.form.draft.toolPolicy.allowedRuntimeToolIds
       : [];
     return mergeRuntimeToolOptions(
-      collectStaticRuntimeToolOptions(toolRegistry).concat(collectLocalRuntimeToolOptions(state.localMcpCatalog)),
+      collectStaticRuntimeToolOptions(toolRegistry)
+        .concat(registeredRuntimeToolOptionsFromAssetRegistry(assetRegistry))
+        .concat(collectLocalRuntimeToolOptions(state.localMcpCatalog)),
       selected
     );
   }
@@ -1398,6 +2031,7 @@
   function activeRegistries(state) {
     var source = ensureObject(state.registries);
     var registries = Object.assign({
+      capabilities: [],
       builtInSkills: [],
       workflows: [],
       models: FALLBACK_PERSONA_STUDIO_MODELS.slice(),
@@ -1419,11 +2053,12 @@
       runtimeToolOptions: [],
       connectors: [],
       connectorOptions: [],
-      reservedCoreTools: [],
-    }, ensureObject(registries.toolRegistry));
-    registries.toolRegistry.runtimeToolOptions = runtimeToolOptionsForState(state, registries);
-    return registries;
-  }
+	      reservedCoreTools: [],
+	    }, ensureObject(registries.toolRegistry));
+	    registries.toolRegistry.runtimeToolOptions = runtimeToolOptionsForState(state, registries);
+	    registries.assetRegistry = source.assetRegistry || state.assetRegistry || null;
+	    return registries;
+	  }
 
   function ensureRequiredModelDefaults(state, registries) {
     if (!state.form || !state.form.draft || !state.form.draft.modelPolicy) return;
@@ -1436,7 +2071,14 @@
   }
 
   function personaListQuery(state) {
-    return state.showArchivedPersonas ? { includeArchived: 'true' } : null;
+    var query = {};
+    if (state.showArchivedPersonas) {
+      query.includeArchived = 'true';
+    }
+    if (state.organizationId) {
+      query.organizationId = state.organizationId;
+    }
+    return Object.keys(query).length ? query : null;
   }
 
   function currentPersonaDefinition(state) {
@@ -1451,8 +2093,12 @@
   }
 
   function applyBootstrapPayload(state, payload) {
-    state.personas = ensureArray(payload && payload.personas);
     state.registries = payload && payload.registries ? payload.registries : state.registries;
+    state.assetRegistry = payload && payload.assetRegistry ? payload.assetRegistry : state.assetRegistry;
+    state.personas = mergePersonaAssetsIntoCatalog(
+      ensureArray(payload && payload.personas),
+      state.assetRegistry
+    );
     state.bootstrapLoaded = true;
     if (
       state.selectedPersonaKey &&
@@ -1468,6 +2114,7 @@
   }
 
   function fetchBootstrap(state) {
+    syncOrganizationContext(state);
     if (state.bootstrapPromise) {
       return state.bootstrapPromise;
     }
@@ -1480,13 +2127,20 @@
     )
       .then(function (payload) {
         applyBootstrapPayload(state, payload);
-        if (state.selectedPersonaKey) {
-          return loadPersona(state, state.selectedPersonaKey);
-        }
-        state.current = null;
-        state.form = null;
-        state.dirty = false;
-        return null;
+        return refreshAssetRegistry(state)
+          .catch(function () {
+            return null;
+          })
+          .then(function () {
+            state.personas = mergePersonaAssetsIntoCatalog(state.personas, state.assetRegistry);
+            if (state.selectedPersonaKey) {
+              return loadPersona(state, state.selectedPersonaKey);
+            }
+            state.current = null;
+            state.form = null;
+            state.dirty = false;
+            return null;
+          });
       })
       .catch(function (error) {
         setError(state, stringifyError(error));
@@ -1497,6 +2151,25 @@
         renderState(state);
       });
     return state.bootstrapPromise;
+  }
+
+  function refreshAssetRegistry(state) {
+    if (!state.organizationId) {
+      return Promise.resolve(null);
+    }
+    var query = state.showArchivedPersonas ? { includeArchived: 'true' } : null;
+    return request(
+      'GET',
+      '/organizations/' + encodeURIComponent(state.organizationId) + '/persona-studio/assets',
+      null,
+      query
+    ).then(function (assetRegistry) {
+      state.assetRegistry = assetRegistry || null;
+      state.registries = Object.assign({}, ensureObject(state.registries), {
+        assetRegistry: state.assetRegistry,
+      });
+      return state.assetRegistry;
+    });
   }
 
   function loadPersona(state, personaKey) {
@@ -1575,6 +2248,81 @@
           return null;
         }
         return loadPersona(state, nextKey);
+      });
+  }
+
+  function registerCustomMcpTool(state) {
+    if (!state.organizationId) {
+      setError(state, 'Select an organization before registering a tool.');
+      renderState(state);
+      return;
+    }
+    if (!state.form || !state.form.draft) {
+      setError(state, 'Select a persona before registering a tool.');
+      renderState(state);
+      return;
+    }
+
+    var payload;
+    try {
+      payload = buildCustomToolRegistrationPayload(state);
+    } catch (error) {
+      state.customToolError = stringifyError(error);
+      setError(state, state.customToolError);
+      renderState(state);
+      return;
+    }
+
+    state.customToolRegistering = true;
+    state.customToolError = '';
+    setStatus(state, 'Registering tool...');
+    renderState(state);
+
+    request(
+      'POST',
+      '/organizations/' + encodeURIComponent(state.organizationId) + '/persona-studio/custom-tools',
+      payload
+    )
+      .catch(function (error) {
+        if (!customToolRegistrationFallbackNeeded(error)) {
+          throw error;
+        }
+        setStatus(state, 'Registering tool with compatibility asset APIs...');
+        renderState(state);
+        return registerCustomMcpToolViaAssetApis(state, payload);
+      })
+      .then(function (result) {
+        return refreshAssetRegistry(state).then(function () {
+          return result;
+        });
+      })
+      .then(function (result) {
+        var runtimeToolId = String((result && result.runtimeToolId) || '').trim();
+        if (runtimeToolId) {
+          state.form.draft.toolPolicy = ensureToolPolicyShape(state.form.draft.toolPolicy);
+          if (state.form.draft.toolPolicy.allowedRuntimeToolIds.indexOf(runtimeToolId) < 0) {
+            state.form.draft.toolPolicy.allowedRuntimeToolIds =
+              state.form.draft.toolPolicy.allowedRuntimeToolIds.concat([runtimeToolId]);
+          }
+          if (state.form.draft.toolPolicy.allowedConnectorKeys.indexOf('mcpviews-plugins') < 0) {
+            state.form.draft.toolPolicy.allowedConnectorKeys =
+              state.form.draft.toolPolicy.allowedConnectorKeys.concat(['mcpviews-plugins']);
+          }
+        }
+        state.customToolDraft = defaultCustomToolDraft();
+        state.customToolError = '';
+        updateDirtyState(state);
+        setStatus(state, runtimeToolId
+          ? 'Registered and selected ' + runtimeToolId + '.'
+          : 'Registered tool.');
+      })
+      .catch(function (error) {
+        state.customToolError = stringifyError(error);
+        setError(state, state.customToolError);
+      })
+      .finally(function () {
+        state.customToolRegistering = false;
+        renderState(state);
       });
   }
 
@@ -1775,6 +2523,9 @@
     if (typeof window.__tribexAiClient.configureThreadRuntime === 'function') {
       window.__tribexAiClient.configureThreadRuntime(launch.threadId, {
         runtimeSessionBody: launch.runtimeSessionBody || null,
+        runtimeSession: launch.runtimeSession || null,
+        relay: launch.relay || null,
+        effectivePersona: launch.effectivePersona || null,
         personaOverride: launch.personaOverride || null,
         personaTestRunId: launch.personaTestRunId || null,
         telemetryToken: launch.telemetryToken || null,
@@ -2028,7 +2779,10 @@
         return request(
           'POST',
           '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-runs',
-          { sourceStage: 'draft' }
+          {
+            sourceStage: 'draft',
+            organizationId: state.organizationId || undefined,
+          }
         );
       })
       .then(function (payload) {
@@ -2079,6 +2833,7 @@
 
     return {
       sourceStage: 'draft',
+      organizationId: state.organizationId || undefined,
       runCount: draft.runCount,
       summaryScaffold: {
         enabled: true,
@@ -2384,11 +3139,14 @@
     var displayName = window.prompt('Display name', key);
     if (!displayName) return;
     var description = window.prompt('Description', displayName + ' persona draft created from Persona Studio.') || '';
+    var metadataGroup = window.prompt('Metadata group', '') || '';
 
     request('POST', '/admin/persona-studio/personas', {
       key: key,
       displayName: displayName,
       description: description,
+      metadataGroup: metadataGroup.trim(),
+      organizationId: state.organizationId || undefined,
     })
       .then(function (payload) {
         setStatus(state, 'Created new persona draft.');
@@ -2400,13 +3158,116 @@
       });
   }
 
+  function tooltipLabel(helpText) {
+    var text = String(helpText || '').trim();
+    var sentenceMatch = text.match(/^.*?[.!?](\s|$)/);
+    var firstSentence = sentenceMatch ? sentenceMatch[0].trim() : text;
+    return 'Show help: ' + (firstSentence.length > 90 ? firstSentence.slice(0, 87) + '...' : firstSentence);
+  }
+
+  function ensureFloatingTooltip() {
+    var globalState = getGlobalState();
+    if (globalState.tooltipEl && document.body.contains(globalState.tooltipEl)) {
+      return globalState.tooltipEl;
+    }
+    var tooltip = document.getElementById('persona-lab-floating-tooltip') || createEl('div', 'persona-lab-floating-tooltip');
+    tooltip.id = 'persona-lab-floating-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    if (!tooltip.parentNode) {
+      document.body.appendChild(tooltip);
+    }
+    globalState.tooltipEl = tooltip;
+    if (!globalState.tooltipKeyHandlerInstalled) {
+      globalState.tooltipKeyHandlerInstalled = true;
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          hideFloatingTooltip();
+        }
+      });
+    }
+    return tooltip;
+  }
+
+  function fillFloatingTooltip(tooltip, helpText) {
+    var text = String(helpText || '').trim();
+    tooltip.innerHTML = '';
+    var exampleMatch = text.match(/\bExamples?:/i);
+    if (!exampleMatch) {
+      tooltip.appendChild(createEl('p', null, text));
+      return;
+    }
+    var body = text.slice(0, exampleMatch.index).trim();
+    var example = text.slice(exampleMatch.index).trim();
+    if (body) {
+      tooltip.appendChild(createEl('p', null, body));
+    }
+    tooltip.appendChild(createEl('div', 'persona-lab-floating-tooltip-example', example));
+  }
+
+  function positionFloatingTooltip(trigger, tooltip) {
+    var triggerRect = trigger.getBoundingClientRect();
+    var tooltipRect = tooltip.getBoundingClientRect();
+    var gap = 10;
+    var margin = 12;
+    var left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2);
+    left = Math.max(margin, Math.min(left, window.innerWidth - tooltipRect.width - margin));
+    var top = triggerRect.top - tooltipRect.height - gap;
+    if (top < margin) {
+      top = triggerRect.bottom + gap;
+    }
+    top = Math.max(margin, Math.min(top, window.innerHeight - tooltipRect.height - margin));
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  }
+
+  function showFloatingTooltip(trigger, helpText) {
+    var tooltip = ensureFloatingTooltip();
+    fillFloatingTooltip(tooltip, helpText);
+    tooltip.classList.add('visible');
+    positionFloatingTooltip(trigger, tooltip);
+    trigger.setAttribute('aria-describedby', tooltip.id);
+    getGlobalState().activeTooltipTrigger = trigger;
+  }
+
+  function hideFloatingTooltip(trigger) {
+    var globalState = getGlobalState();
+    if (trigger && globalState.activeTooltipTrigger && globalState.activeTooltipTrigger !== trigger) {
+      return;
+    }
+    if (globalState.tooltipEl) {
+      globalState.tooltipEl.classList.remove('visible');
+    }
+    if (globalState.activeTooltipTrigger) {
+      globalState.activeTooltipTrigger.removeAttribute('aria-describedby');
+    }
+    globalState.activeTooltipTrigger = null;
+  }
+
   function createTooltip(helpText) {
-    var trigger = createEl('span', 'persona-lab-tooltip', '?');
-    trigger.tabIndex = 0;
-    trigger.setAttribute('role', 'button');
-    trigger.setAttribute('aria-label', helpText);
-    trigger.title = helpText;
-    trigger.appendChild(createEl('span', 'persona-lab-tooltip-popover', helpText));
+    var trigger = createEl('button', 'persona-lab-tooltip', '?');
+    trigger.type = 'button';
+    trigger.setAttribute('aria-label', tooltipLabel(helpText));
+    trigger.addEventListener('mouseenter', function () {
+      showFloatingTooltip(trigger, helpText);
+    });
+    trigger.addEventListener('mouseleave', function () {
+      hideFloatingTooltip(trigger);
+    });
+    trigger.addEventListener('focus', function () {
+      showFloatingTooltip(trigger, helpText);
+    });
+    trigger.addEventListener('blur', function () {
+      hideFloatingTooltip(trigger);
+    });
+    trigger.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (getGlobalState().activeTooltipTrigger === trigger) {
+        hideFloatingTooltip(trigger);
+      } else {
+        showFloatingTooltip(trigger, helpText);
+      }
+    });
     return trigger;
   }
 
@@ -2432,6 +3293,140 @@
     field.appendChild(input);
     parent.appendChild(field);
     return field;
+  }
+
+  function renderCustomToolRegistrationPanel(state) {
+    var draft = Object.assign(defaultCustomToolDraft(), ensureObject(state.customToolDraft));
+    state.customToolDraft = draft;
+    var wrapper = createEl('div', 'persona-lab-custom-tool-registration');
+    appendSectionHeading(
+      wrapper,
+      'h3',
+      'Register MCPViews tool',
+      'Add a consultant-owned plugin tool by namespace.tool-name, then select it for this persona through MCPViews relay.'
+    );
+
+    var grid = createEl('div', 'persona-lab-grid');
+    var keyInput = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-tool-key');
+    keyInput.value = draft.toolKey;
+    keyInput.placeholder = 'namespace.tool-name';
+    bindInput(keyInput, function () {
+      draft.toolKey = keyInput.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Tool key',
+      keyInput,
+      'The plugin namespace and tool name. Example: acme.lookup-account.'
+    );
+
+    var labelInput = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-tool-label');
+    labelInput.value = draft.label;
+    labelInput.placeholder = 'Lookup account';
+    bindInput(labelInput, function () {
+      draft.label = labelInput.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Label',
+      labelInput,
+      'Human-readable name shown in the persona tool selector.'
+    );
+
+    var connectorInput = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-tool-connector');
+    connectorInput.value = draft.connectorLabel;
+    connectorInput.placeholder = 'Acme';
+    bindInput(connectorInput, function () {
+      draft.connectorLabel = connectorInput.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Service label',
+      connectorInput,
+      'Optional label for the service group. Defaults to the namespace.'
+    );
+
+    var operationSelect = markFocusKey(createEl('select', 'persona-lab-select'), 'custom-tool-operation');
+    [
+      { value: 'read', label: 'Read' },
+      { value: 'write', label: 'Write' },
+      { value: 'destructive', label: 'Destructive' },
+    ].forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.value;
+      option.textContent = entry.label;
+      if (draft.operationKind === entry.value) option.selected = true;
+      operationSelect.appendChild(option);
+    });
+    bindInput(operationSelect, function () {
+      draft.operationKind = operationSelect.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Operation',
+      operationSelect,
+      'Risk level used for review and relay metadata.'
+    );
+
+    var descriptionInput = markFocusKey(createEl('textarea', 'persona-lab-textarea'), 'custom-tool-description');
+    descriptionInput.value = draft.description;
+    bindInput(descriptionInput, function () {
+      draft.description = descriptionInput.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Description',
+      descriptionInput,
+      'Short description of when the persona should use this tool.'
+    );
+
+    var connectorDescriptionInput = markFocusKey(createEl('textarea', 'persona-lab-textarea'), 'custom-tool-connector-description');
+    connectorDescriptionInput.value = draft.connectorDescription;
+    bindInput(connectorDescriptionInput, function () {
+      draft.connectorDescription = connectorDescriptionInput.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Service notes',
+      connectorDescriptionInput,
+      'Optional notes for the service-level connector record.'
+    );
+
+    var metadataInput = markFocusKey(createEl('textarea', 'persona-lab-textarea json'), 'custom-tool-metadata');
+    metadataInput.style.minHeight = '140px';
+    metadataInput.value = draft.metadataText;
+    bindInput(metadataInput, function () {
+      draft.metadataText = metadataInput.value;
+    });
+    var metadataField = renderFieldGroup(
+      grid,
+      'Metadata JSON',
+      metadataInput,
+      'Optional JSON metadata. Include inputSchema to describe tool arguments.'
+    );
+    metadataField.style.gridColumn = '1 / -1';
+
+    wrapper.appendChild(grid);
+
+    var actions = createEl('div', 'persona-lab-inline');
+    actions.style.justifyContent = 'flex-end';
+    if (state.customToolError) {
+      actions.style.justifyContent = 'space-between';
+      actions.appendChild(createEl('div', 'persona-lab-error', state.customToolError));
+    }
+    var button = createEl(
+      'button',
+      'persona-lab-button',
+      state.customToolRegistering ? 'Registering...' : 'Register tool'
+    );
+    button.type = 'button';
+    button.disabled = Boolean(state.customToolRegistering);
+    button.addEventListener('click', function () {
+      registerCustomMcpTool(state);
+    });
+    actions.appendChild(button);
+    wrapper.appendChild(actions);
+    return wrapper;
   }
 
   function compactRuleText(value) {
@@ -2480,24 +3475,25 @@
     var wrapper = createEl('div', 'persona-lab-section-list');
     var header = createEl('div', 'persona-lab-skill-header');
     appendSectionHeading(
-      header,
-      'h3',
-      'Variables',
-      'Variables let a skill ask for user-specific values before the prompt is generated. Example: audience, account_name, date_start.'
+	      header,
+	      'h3',
+	      'Variables',
+	      'Variables let a skill ask for user-specific values before the prompt is generated. Example: audience, account_name, date_start.'
     );
     var addVariable = createEl('button', 'persona-lab-button', 'Add variable');
     addVariable.type = 'button';
     addVariable.addEventListener('click', function () {
       skill.variables.push(defaultSkillVariable(skill.variables.length));
+      state.expandedCustomSkillIndex = skillIndex;
       updateDirtyState(state);
       renderState(state);
     });
     header.appendChild(addVariable);
     wrapper.appendChild(header);
 
-    var list = createEl('div', 'persona-lab-variable-list');
-    if (!skill.variables.length) {
-      list.appendChild(createEl('div', 'persona-lab-empty', 'No variables for this custom skill.'));
+	    var list = createEl('div', 'persona-lab-variable-list');
+	    if (!skill.variables.length) {
+	      list.appendChild(createEl('div', 'persona-lab-empty', 'No variables for this custom skill.'));
     }
     skill.variables.forEach(function (variable, variableIndex) {
       var rowId = ensureVariableRowId(state, variable);
@@ -2509,7 +3505,7 @@
         variable.name = nameInput.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(row, 'Name', nameInput, 'Machine-readable variable name. Use lowercase snake_case.');
+      renderFieldGroup(row, 'Name', nameInput, 'Machine-readable variable name. Use lowercase snake_case. Example: account_name.');
 
       var labelInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-label');
       labelInput.value = variable.label || '';
@@ -2517,7 +3513,7 @@
         variable.label = labelInput.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(row, 'Label', labelInput, 'Short label shown to the person filling out the skill.');
+      renderFieldGroup(row, 'Label', labelInput, 'Short label shown to the person filling out the skill. Example: Account name.');
 
       var typeSelect = markFocusKey(createEl('select', 'persona-lab-select'), 'skill-' + skillIndex + '-' + rowId + '-type');
       ['text', 'textarea', 'datetime', 'email_account_multi_select', 'number', 'boolean'].forEach(function (type) {
@@ -2531,7 +3527,7 @@
         variable.type = typeSelect.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(row, 'Type', typeSelect);
+      renderFieldGroup(row, 'Type', typeSelect, 'Input type used when collecting the value. Example: textarea for a long customer brief.');
 
       var defaultInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-default');
       defaultInput.value = variable.default == null ? '' : String(variable.default);
@@ -2539,7 +3535,7 @@
         variable.default = defaultInput.value;
         updateDirtyState(state);
       });
-      renderFieldGroup(row, 'Default', defaultInput, 'Optional default value used when the person does not provide one.');
+      renderFieldGroup(row, 'Default', defaultInput, 'Optional default value used when the person does not provide one. Example: Current quarter.');
 
       var requiredLabel = createEl('label', 'persona-lab-toggle persona-lab-variable-required');
       var requiredInput = document.createElement('input');
@@ -2557,6 +3553,7 @@
       remove.type = 'button';
       remove.addEventListener('click', function () {
         skill.variables.splice(variableIndex, 1);
+        state.expandedCustomSkillIndex = skillIndex;
         updateDirtyState(state);
         renderState(state);
       });
@@ -2744,10 +3741,240 @@
         });
         copy.appendChild(variableList);
       }
+      if (item.sourceBadge || item.installed !== null || item.authRequired) {
+        var badges = createEl('div', 'persona-lab-choice-variable-list');
+        if (item.sourceBadge) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', item.sourceBadge));
+        }
+        if (item.installed !== null) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', item.installed ? 'installed' : 'not installed'));
+        }
+        if (item.authRequired) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', 'auth required'));
+        }
+        copy.appendChild(badges);
+      }
       row.appendChild(copy);
       grid.appendChild(row);
     });
     return grid;
+  }
+
+  function groupedChoiceCountLabel(count, singular, plural) {
+    return formatNumber(count) + ' ' + (count === 1 ? singular : plural);
+  }
+
+  function sortGroupedChoiceLabels(left, right) {
+    if (left === 'Unregistered' && right !== 'Unregistered') return 1;
+    if (right === 'Unregistered' && left !== 'Unregistered') return -1;
+    if (left === UNGROUPED_PERSONA_GROUP && right !== UNGROUPED_PERSONA_GROUP) return 1;
+    if (right === UNGROUPED_PERSONA_GROUP && left !== UNGROUPED_PERSONA_GROUP) return -1;
+    return left.localeCompare(right);
+  }
+
+  function buildGroupedChoiceSelector(items, selected, onToggle, config) {
+    var selectorConfig = Object.assign({
+      defaultGroup: UNGROUPED_PERSONA_GROUP,
+      emptyMessage: 'No registry items are available.',
+      itemSingular: 'item',
+      itemPlural: 'items',
+	      searchPlaceholder: 'Search names, keys, descriptions, or metadata groups',
+	      searchLabel: 'Search registry items',
+	      copyLabel: 'Copy key',
+	      showKeys: true,
+	      showCopyButton: true,
+	    }, ensureObject(config));
+    var selectedValues = ensureArray(selected);
+    var selectedSet = new Set(selectedValues.map(function (value) { return String(value); }));
+    var options = mergeChoiceOptions(items, selectedValues);
+    var root = createEl('div', 'persona-lab-runtime-tools');
+    var toolbar = createEl('div', 'persona-lab-tool-toolbar');
+    var search = createEl('input', 'persona-lab-input');
+    search.type = 'search';
+    search.placeholder = selectorConfig.searchPlaceholder;
+    search.setAttribute('aria-label', selectorConfig.searchLabel);
+    toolbar.appendChild(search);
+    var toolbarActions = createEl('div', 'persona-lab-tool-toolbar-actions');
+    var selectedToggle = createEl('label', 'persona-lab-toggle');
+    var selectedOnly = document.createElement('input');
+    selectedOnly.type = 'checkbox';
+    selectedToggle.appendChild(selectedOnly);
+    selectedToggle.appendChild(document.createTextNode('Selected only'));
+    toolbarActions.appendChild(selectedToggle);
+    var expandAll = createEl('button', 'persona-lab-button small', 'Expand all');
+    expandAll.type = 'button';
+    expandAll.addEventListener('click', function () {
+      Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-group:not(.hidden)'), function (group) {
+        group.open = true;
+      });
+    });
+    toolbarActions.appendChild(expandAll);
+    var collapseAll = createEl('button', 'persona-lab-button small', 'Collapse all');
+    collapseAll.type = 'button';
+    collapseAll.addEventListener('click', function () {
+      Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-group'), function (group) {
+        group.open = false;
+      });
+    });
+    toolbarActions.appendChild(collapseAll);
+    toolbarActions.appendChild(
+      createEl('span', 'persona-lab-badge', formatNumber(selectedValues.length) + ' selected')
+    );
+    toolbar.appendChild(toolbarActions);
+    search.addEventListener('input', function () {
+      filterRuntimeToolRows(root, search.value, selectedOnly.checked);
+    });
+    selectedOnly.addEventListener('change', function () {
+      filterRuntimeToolRows(root, search.value, selectedOnly.checked);
+    });
+    root.appendChild(toolbar);
+
+    var groups = new Map();
+    options.forEach(function (option) {
+      var groupLabel = String(option.group || selectorConfig.defaultGroup || UNGROUPED_PERSONA_GROUP).trim()
+        || UNGROUPED_PERSONA_GROUP;
+      var groupKey = groupLabel.toLowerCase();
+      var group = groups.get(groupKey);
+      if (!group) {
+        group = {
+          key: groupKey,
+          label: groupLabel,
+          options: [],
+        };
+        groups.set(groupKey, group);
+      }
+      group.options.push(option);
+    });
+
+    Array.from(groups.keys()).sort(function (leftKey, rightKey) {
+      var leftGroup = groups.get(leftKey);
+      var rightGroup = groups.get(rightKey);
+      return sortGroupedChoiceLabels(leftGroup ? leftGroup.label : leftKey, rightGroup ? rightGroup.label : rightKey);
+    }).forEach(function (groupKey) {
+      var group = groups.get(groupKey);
+      if (!group) return;
+      var selectedCount = group.options.filter(function (option) {
+        return selectedSet.has(String(option.value || option.key));
+      }).length;
+      var groupEl = createEl('details', 'persona-lab-tool-group persona-lab-details');
+      groupEl.open = Boolean(selectedCount || groups.size <= 1);
+      var header = createEl('summary', 'persona-lab-tool-group-header persona-lab-details-summary');
+      header.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+      var headerCopy = createEl('div');
+      headerCopy.appendChild(createEl('strong', null, group.label));
+      headerCopy.appendChild(createEl('code', null, group.key));
+      header.appendChild(headerCopy);
+      var headerMeta = createEl('div', 'persona-lab-tool-group-meta');
+      if (selectedCount) {
+        headerMeta.appendChild(createEl('span', 'persona-lab-badge', formatNumber(selectedCount) + ' selected'));
+      }
+      headerMeta.appendChild(
+        createEl(
+          'span',
+          'persona-lab-badge',
+          groupedChoiceCountLabel(group.options.length, selectorConfig.itemSingular, selectorConfig.itemPlural)
+        )
+      );
+      header.appendChild(headerMeta);
+      groupEl.appendChild(header);
+      var list = createEl('div', 'persona-lab-tool-list');
+      group.options.sort(function (left, right) {
+        return String(left.label).localeCompare(String(right.label))
+          || String(left.key).localeCompare(String(right.key));
+      }).forEach(function (option) {
+        var row = createEl('label', 'persona-lab-tool-row');
+        var selectionValue = String(option.value || option.key);
+        var displayKey = String(option.displayKey || option.key);
+        var variableSearch = ensureArray(option.variables).map(function (variable) {
+          return [variable.name, variable.label, variable.type].join(' ');
+        }).join(' ');
+        row.setAttribute(
+          'data-search',
+          [
+            option.key,
+            selectionValue,
+            displayKey,
+            option.label,
+            option.description,
+            option.group,
+            option.kindLabel,
+            option.sourceBadge,
+            option.installed === null ? '' : (option.installed ? 'installed' : 'not installed'),
+            option.authRequired ? 'auth required' : '',
+            variableSearch,
+          ].join(' ')
+        );
+        row.setAttribute('data-selected', selectedSet.has(selectionValue) ? 'true' : 'false');
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = selectedSet.has(selectionValue);
+        input.addEventListener('change', function () {
+          onToggle(selectionValue);
+        });
+        row.appendChild(input);
+        var copy = createEl('div', 'persona-lab-tool-copy');
+        copy.appendChild(createEl('strong', null, option.label));
+        if (selectorConfig.showKeys !== false) {
+          copy.appendChild(createEl('code', null, displayKey));
+        }
+        if (option.description) {
+          copy.appendChild(createEl('p', 'persona-lab-helper', option.description));
+        }
+        var badges = createEl('div', 'persona-lab-inline');
+        if (option.kindLabel) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', option.kindLabel));
+        }
+        if (option.toolCount !== null) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', groupedChoiceCountLabel(option.toolCount, 'tool', 'tools')));
+        }
+        if (option.sourceBadge) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', option.sourceBadge));
+        }
+        if (option.installed !== null) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', option.installed ? 'installed' : 'not installed'));
+        }
+        if (option.authRequired) {
+          badges.appendChild(createEl('span', 'persona-lab-badge', 'auth required'));
+        }
+        if (badges.childNodes.length) {
+          copy.appendChild(badges);
+        }
+        if (option.variables && option.variables.length) {
+          var variableList = createEl('div', 'persona-lab-choice-variable-list');
+          option.variables.forEach(function (variable) {
+            variableList.appendChild(
+              createEl(
+                'span',
+                'persona-lab-badge',
+                (variable.label || variable.name) + ' · ' + variable.type
+              )
+            );
+          });
+          copy.appendChild(variableList);
+        }
+        row.appendChild(copy);
+        if (selectorConfig.showCopyButton !== false) {
+          var copyButton = createEl('button', 'persona-lab-button', selectorConfig.copyLabel);
+          copyButton.type = 'button';
+          copyButton.setAttribute('aria-label', selectorConfig.copyLabel + ' ' + displayKey);
+          copyButton.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            copyText(displayKey);
+          });
+          row.appendChild(copyButton);
+        }
+        list.appendChild(row);
+      });
+      groupEl.appendChild(list);
+      root.appendChild(groupEl);
+    });
+
+    if (!options.length) {
+      root.appendChild(createEl('div', 'persona-lab-empty', selectorConfig.emptyMessage));
+    }
+
+    return root;
   }
 
   function copyText(value) {
@@ -2756,138 +3983,21 @@
     }
   }
 
-  function filterRuntimeToolRows(root, query) {
+  function filterRuntimeToolRows(root, query, selectedOnly) {
     var normalized = String(query || '').trim().toLowerCase();
     Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-row'), function (row) {
       var haystack = String(row.getAttribute('data-search') || '').toLowerCase();
-      row.classList.toggle('hidden', Boolean(normalized) && haystack.indexOf(normalized) < 0);
+      var matchesQuery = !normalized || haystack.indexOf(normalized) >= 0;
+      var matchesSelection = !selectedOnly || row.getAttribute('data-selected') === 'true';
+      row.classList.toggle('hidden', !(matchesQuery && matchesSelection));
     });
     Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-tool-group'), function (group) {
       var visibleRows = group.querySelectorAll('.persona-lab-tool-row:not(.hidden)').length;
       group.classList.toggle('hidden', visibleRows === 0);
-    });
-  }
-
-  function buildRuntimeToolSelector(state, options) {
-    var selectedValues = ensureArray(state.form.draft.toolPolicy.allowedRuntimeToolIds);
-    var selectedSet = new Set(selectedValues.map(function (id) { return String(id); }));
-    var root = createEl('div', 'persona-lab-runtime-tools');
-    var toolbar = createEl('div', 'persona-lab-tool-toolbar');
-    var search = createEl('input', 'persona-lab-input');
-    search.type = 'search';
-    search.placeholder = 'Search connectors, tools, or IDs';
-    search.setAttribute('aria-label', 'Search tools by connector, tool, or ID');
-    search.addEventListener('input', function () {
-      filterRuntimeToolRows(root, search.value);
-    });
-    toolbar.appendChild(search);
-    var summary = createEl(
-      'span',
-      'persona-lab-badge',
-      formatNumber(selectedValues.length) + ' selected'
-    );
-    toolbar.appendChild(summary);
-    root.appendChild(toolbar);
-
-    if (state.localMcpCatalogLoading) {
-      root.appendChild(createEl('div', 'persona-lab-helper', 'Loading local MCPViews plugin catalog...'));
-    } else if (state.localMcpCatalogError) {
-      root.appendChild(createEl('div', 'persona-lab-helper', 'Local MCPViews plugin catalog is unavailable: ' + state.localMcpCatalogError));
-    }
-
-    var groups = new Map();
-    ensureArray(options).forEach(function (option) {
-      var key = option.connectorKey || 'unavailable';
-      var group = groups.get(key);
-      if (!group) {
-        group = {
-          key: key,
-          label: option.connectorLabel || humanizeIdentifier(key),
-          authState: option.authState || '',
-          options: [],
-        };
-        groups.set(key, group);
+      if ((normalized || selectedOnly) && visibleRows > 0) {
+        group.open = true;
       }
-      if (option.authState && !group.authState) {
-        group.authState = option.authState;
-      }
-      group.options.push(option);
     });
-
-    Array.from(groups.keys()).sort().forEach(function (connectorKey) {
-      var group = groups.get(connectorKey);
-      if (!group) return;
-      var groupEl = createEl('div', 'persona-lab-tool-group');
-      var header = createEl('div', 'persona-lab-tool-group-header');
-      var headerCopy = createEl('div');
-      headerCopy.appendChild(createEl('strong', null, group.label));
-      headerCopy.appendChild(createEl('code', null, connectorKey));
-      header.appendChild(headerCopy);
-      header.appendChild(createEl('span', 'persona-lab-badge', group.authState || 'available'));
-      groupEl.appendChild(header);
-      var list = createEl('div', 'persona-lab-tool-list');
-      group.options.sort(function (left, right) {
-        return String(left.label).localeCompare(String(right.label));
-      }).forEach(function (option) {
-        var row = createEl('label', 'persona-lab-tool-row');
-        row.setAttribute(
-          'data-search',
-          [
-            option.id,
-            option.connectorKey,
-            option.connectorLabel,
-            option.toolName,
-            option.label,
-            option.description,
-            option.operationKind,
-            option.source,
-          ].join(' ')
-        );
-        var input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = selectedSet.has(String(option.id));
-        input.addEventListener('change', function () {
-          state.form.draft.toolPolicy.allowedRuntimeToolIds = toggleListValue(
-            state.form.draft.toolPolicy.allowedRuntimeToolIds,
-            option.id
-          );
-          updateDirtyState(state);
-          renderState(state);
-        });
-        row.appendChild(input);
-        var copy = createEl('div', 'persona-lab-tool-copy');
-        copy.appendChild(createEl('strong', null, option.label));
-        copy.appendChild(createEl('code', null, option.id));
-        if (option.description) {
-          copy.appendChild(createEl('p', 'persona-lab-helper', option.description));
-        }
-        var badges = createEl('div', 'persona-lab-inline');
-        badges.appendChild(createEl('span', 'persona-lab-badge', option.operationKind || 'read'));
-        badges.appendChild(createEl('span', 'persona-lab-badge', option.source || 'static'));
-        if (option.group) {
-          badges.appendChild(createEl('span', 'persona-lab-badge', option.group));
-        }
-        copy.appendChild(badges);
-        row.appendChild(copy);
-        var copyButton = createEl('button', 'persona-lab-button', 'Copy ID');
-        copyButton.type = 'button';
-        copyButton.title = 'Copy stable tool id';
-        copyButton.addEventListener('click', function (event) {
-          event.preventDefault();
-          copyText(option.id);
-        });
-        row.appendChild(copyButton);
-        list.appendChild(row);
-      });
-      groupEl.appendChild(list);
-      root.appendChild(groupEl);
-    });
-
-    if (!ensureArray(options).length) {
-      root.appendChild(createEl('div', 'persona-lab-empty', 'No tools are available from the backend registry or local MCPViews catalog.'));
-    }
-
-    return root;
   }
 
   function buildModelSelect(registries, selectedValue, onChange, allowEmpty) {
@@ -3115,12 +4225,120 @@
     return select;
   }
 
+  function buildPersonaNavGroups(personas) {
+    var groups = {};
+    ensureArray(personas).forEach(function (persona) {
+      if (!persona) return;
+      var label = personaMetadataGroup(persona) || UNGROUPED_PERSONA_GROUP;
+      var key = label.toLowerCase();
+      if (!groups[key]) {
+        groups[key] = {
+          key: key,
+          label: label,
+          personas: [],
+        };
+      }
+      groups[key].personas.push(persona);
+    });
+    return Object.keys(groups).map(function (key) {
+      groups[key].personas.sort(function (left, right) {
+        return String(left.displayName || '').localeCompare(String(right.displayName || ''))
+          || String(left.key || '').localeCompare(String(right.key || ''));
+      });
+      return groups[key];
+    }).sort(function (left, right) {
+      if (left.label === SYSTEM_PERSONA_GROUP && right.label !== SYSTEM_PERSONA_GROUP) return -1;
+      if (right.label === SYSTEM_PERSONA_GROUP && left.label !== SYSTEM_PERSONA_GROUP) return 1;
+      if (left.label === UNGROUPED_PERSONA_GROUP && right.label !== UNGROUPED_PERSONA_GROUP) return 1;
+      if (right.label === UNGROUPED_PERSONA_GROUP && left.label !== UNGROUPED_PERSONA_GROUP) return -1;
+      return left.label.localeCompare(right.label);
+    });
+  }
+
+  function personaCatalogItemFromAsset(asset) {
+    if (!asset || asset.assetType !== 'PERSONA' || !asset.key) {
+      return null;
+    }
+    if (asset.enabled === false || asset.installed === false || asset.status === 'ARCHIVED') {
+      return null;
+    }
+    var metadata = ensureObject(asset.metadata);
+    return {
+      key: String(asset.key),
+      definitionId: asset.personaDefinitionId || asset.id || '',
+      displayName: String(asset.label || asset.name || asset.key),
+      description: String(asset.description || ''),
+      status: asset.status || 'ACTIVE',
+      archivedAt: null,
+      archiveReason: null,
+      owner: asset.ownerOrganizationId ? 'consultant' : 'platform',
+      ownerOrganizationId: asset.ownerOrganizationId || null,
+      metadataGroup: String(
+        asset.metadataGroup || asset.group || metadata.metadataGroup || metadata.group || 'Consultant'
+      ),
+      hasDraft: true,
+      betaReleaseVersion: null,
+      deployedReleaseVersion: null,
+    };
+  }
+
+  function mergePersonaAssetsIntoCatalog(personas, assetRegistry) {
+    var merged = ensureArray(personas).slice();
+    var seen = {};
+    merged.forEach(function (persona) {
+      if (persona && persona.key) {
+        seen[String(persona.key)] = true;
+      }
+    });
+    ensureArray(assetRegistry && assetRegistry.assets).forEach(function (asset) {
+      var item = personaCatalogItemFromAsset(asset);
+      if (!item || seen[item.key]) return;
+      seen[item.key] = true;
+      merged.push(item);
+    });
+    return merged.sort(function (left, right) {
+      return String(left.displayName || '').localeCompare(String(right.displayName || ''))
+        || String(left.key || '').localeCompare(String(right.key || ''));
+    });
+  }
+
+  function renderNavPersonaItem(state, persona) {
+    var archived = persona.status === 'ARCHIVED' || Boolean(persona.archivedAt);
+    var item = createEl(
+      'button',
+      'persona-lab-nav-item' +
+        (persona.key === state.selectedPersonaKey ? ' active' : '') +
+        (archived ? ' archived' : '')
+    );
+    item.type = 'button';
+    item.addEventListener('click', function () {
+      maybeSwitchPersona(state, persona.key);
+    });
+    item.appendChild(createEl('span', 'persona-lab-nav-file-icon'));
+    var copy = createEl('span', 'persona-lab-nav-item-copy');
+    copy.appendChild(createEl('span', 'persona-lab-nav-item-title', persona.displayName));
+    copy.appendChild(createEl('code', null, persona.key));
+    item.appendChild(copy);
+    var meta = createEl('span', 'persona-lab-nav-item-meta');
+    if (persona.key === state.selectedPersonaKey && state.dirty) {
+      meta.appendChild(createEl('span', 'persona-lab-badge dirty', 'Unsaved'));
+    }
+    if (archived) meta.appendChild(createEl('span', 'persona-lab-badge archived', 'archived'));
+    if (persona.betaReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'beta'));
+    if (persona.deployedReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'deployed'));
+    item.appendChild(meta);
+    return item;
+  }
+
   function buildNav(state) {
     var nav = createEl('aside', 'persona-lab-nav');
     var header = createEl('div', 'persona-lab-nav-header');
     var copy = createEl('div');
     copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
     copy.appendChild(createEl('strong', null, 'Personas'));
+    if (state.organizationName) {
+      copy.appendChild(createEl('span', 'persona-lab-badge', state.organizationName));
+    }
     header.appendChild(copy);
     var createButton = createEl('button', 'persona-lab-button', 'New');
     createButton.type = 'button';
@@ -3158,32 +4376,23 @@
         )
       );
     } else {
-      state.personas.forEach(function (persona) {
-        var archived = persona.status === 'ARCHIVED' || Boolean(persona.archivedAt);
-        var item = createEl(
-          'button',
-          'persona-lab-nav-item' +
-            (persona.key === state.selectedPersonaKey ? ' active' : '') +
-            (archived ? ' archived' : '')
-        );
-        item.type = 'button';
-        item.addEventListener('click', function () {
-          maybeSwitchPersona(state, persona.key);
+      buildPersonaNavGroups(state.personas).forEach(function (group) {
+        var groupEl = createEl('details', 'persona-lab-nav-group');
+        groupEl.open = state.navGroupExpansion[group.key] !== false;
+        var summary = createEl('summary', 'persona-lab-nav-group-summary');
+        summary.appendChild(createEl('span', 'persona-lab-nav-group-caret', '>'));
+        summary.appendChild(createEl('span', 'persona-lab-nav-group-name', group.label));
+        summary.appendChild(createEl('span', 'persona-lab-nav-group-count', formatNumber(group.personas.length)));
+        groupEl.appendChild(summary);
+        groupEl.addEventListener('toggle', function () {
+          state.navGroupExpansion[group.key] = groupEl.open;
         });
-        var title = createEl('div', 'persona-lab-nav-item-title');
-        title.appendChild(createEl('span', null, persona.displayName));
-        if (persona.key === state.selectedPersonaKey && state.dirty) {
-          title.appendChild(createEl('span', 'persona-lab-badge dirty', 'Unsaved'));
-        }
-        item.appendChild(title);
-        item.appendChild(createEl('code', null, persona.key));
-        var meta = createEl('div', 'persona-lab-nav-item-meta');
-        if (archived) meta.appendChild(createEl('span', 'persona-lab-badge archived', 'archived'));
-        meta.appendChild(createEl('span', 'persona-lab-badge', persona.hasDraft ? 'draft' : 'no-draft'));
-        if (persona.betaReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'beta'));
-        if (persona.deployedReleaseVersion) meta.appendChild(createEl('span', 'persona-lab-badge', 'deployed'));
-        item.appendChild(meta);
-        list.appendChild(item);
+        var groupList = createEl('div', 'persona-lab-nav-group-children');
+        group.personas.forEach(function (persona) {
+          groupList.appendChild(renderNavPersonaItem(state, persona));
+        });
+        groupEl.appendChild(groupList);
+        list.appendChild(groupEl);
       });
     }
     nav.appendChild(list);
@@ -3437,9 +4646,11 @@
   }
 
   function renderBatchRunSummary(state, run, index) {
-    var card = createEl('div', 'persona-lab-run-card');
+    var card = createEl('details', 'persona-lab-run-card persona-lab-details');
+    card.open = index === 0 || /failed|cancelled/i.test(String(run.status || ''));
     var metricsSummary = metricsSummaryOf(run);
-    var header = createEl('div', 'persona-lab-run-card-header');
+    var header = createEl('summary', 'persona-lab-run-card-header persona-lab-details-summary');
+    header.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
     var headerCopy = createEl('div');
     headerCopy.appendChild(createEl('div', 'persona-lab-run-eyebrow', 'Batch run ' + (index + 1)));
     headerCopy.appendChild(createEl('strong', null, run.label || ('Run ' + (index + 1))));
@@ -3458,6 +4669,7 @@
     header.appendChild(headerCopy);
     header.appendChild(createEl('span', statusBadgeClass(run.status), formatStatusLabel(run.status)));
     card.appendChild(header);
+    var body = createEl('div', 'persona-lab-details-body');
 
     var kv = createEl('div', 'persona-lab-kv');
     [
@@ -3471,7 +4683,7 @@
       item.appendChild(createEl('strong', null, String(entry[1] || '—')));
       kv.appendChild(item);
     });
-    card.appendChild(kv);
+    body.appendChild(kv);
 
     if (metricsSummary && metricsSummary.totals) {
       var metricGrid = createEl('div', 'persona-lab-run-metric-grid');
@@ -3488,14 +4700,14 @@
         metricCard.appendChild(createEl('strong', null, entry[1]));
         metricGrid.appendChild(metricCard);
       });
-      card.appendChild(metricGrid);
+      body.appendChild(metricGrid);
     }
 
     if (run.systemPromptOverride) {
-      card.appendChild(createEl('div', 'persona-lab-run-note', 'System prompt override is set for this run.'));
+      body.appendChild(createEl('div', 'persona-lab-run-note', 'System prompt override is set for this run.'));
     }
     if (run.messagePromptOverride) {
-      card.appendChild(createEl('div', 'persona-lab-run-note', 'Launch-time message prompt override is set for this run.'));
+      body.appendChild(createEl('div', 'persona-lab-run-note', 'Launch-time message prompt override is set for this run.'));
     }
     var actions = createEl('div', 'persona-lab-run-actions');
     var comparisonDetail = metricsSummary && metricsSummary.comparison && metricsSummary.comparison.totalRunTimeMs;
@@ -3537,7 +4749,8 @@
     });
     buttonGroup.appendChild(viewButton);
     actions.appendChild(buttonGroup);
-    card.appendChild(actions);
+    body.appendChild(actions);
+    card.appendChild(body);
     return card;
   }
 
@@ -3760,20 +4973,24 @@
       );
       var runGrid = createEl('div', 'persona-lab-run-grid');
       state.batchDraft.runs.forEach(function (run, index) {
-        var runCard = createEl('div', 'persona-lab-run-card');
-        var title = createEl('div', 'persona-lab-run-card-header');
+        var runCard = createEl('details', 'persona-lab-run-card persona-lab-details');
+        runCard.open = index === 0 || Boolean(run.systemPromptOverride || run.messagePromptOverride || Object.keys(ensureObject(run.runtimeOverrides)).length);
+        var title = createEl('summary', 'persona-lab-run-card-header persona-lab-details-summary');
+        title.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
         var titleCopy = createEl('div');
         titleCopy.appendChild(createEl('strong', null, 'Run ' + (index + 1)));
         titleCopy.appendChild(createEl('div', 'persona-lab-helper', 'Per-run overrides for this tab.'));
         title.appendChild(titleCopy);
+        title.appendChild(createEl('span', 'persona-lab-badge', run.label || 'Untitled'));
         runCard.appendChild(title);
+        var runBody = createEl('div', 'persona-lab-details-body');
 
         var labelInput = createEl('input', 'persona-lab-input');
         labelInput.value = run.label || '';
         bindInput(labelInput, function () {
           run.label = labelInput.value;
         });
-        renderFieldGroup(runCard, 'Label', labelInput);
+        renderFieldGroup(runBody, 'Label', labelInput);
 
         var systemInput = createEl('textarea', 'persona-lab-textarea');
         systemInput.value = run.systemPromptOverride || '';
@@ -3781,7 +4998,12 @@
         bindInput(systemInput, function () {
           run.systemPromptOverride = systemInput.value;
         });
-        renderFieldGroup(runCard, 'System prompt override', systemInput);
+        renderFieldGroup(
+          runBody,
+          'System prompt override',
+          systemInput,
+          'Optional replacement for the saved persona system prompt. Example: Emphasize speed and concise status updates for this run only.'
+        );
 
         var messageInput = createEl('textarea', 'persona-lab-textarea');
         messageInput.value = run.messagePromptOverride || '';
@@ -3789,7 +5011,12 @@
         bindInput(messageInput, function () {
           run.messagePromptOverride = messageInput.value;
         });
-        renderFieldGroup(runCard, 'Message prompt override', messageInput);
+        renderFieldGroup(
+          runBody,
+          'Message prompt override',
+          messageInput,
+          'The first prompt to send into this test tab. Example: Triage the last 10 renewal-risk emails and list the top three follow-ups.'
+        );
 
         var runtimeInput = createEl('textarea', 'persona-lab-textarea json');
         runtimeInput.value = run.runtimeOverridesText || renderJson(ensureObject(run.runtimeOverrides));
@@ -3806,8 +5033,14 @@
             state.batchError = stringifyError(error);
           }
         });
-        renderFieldGroup(runCard, 'Additional runtime overrides (JSON)', runtimeInput);
+        renderFieldGroup(
+          runBody,
+          'Additional runtime overrides (JSON)',
+          runtimeInput,
+          'Optional JSON for test-only runtime knobs. Example: {"temperature":0.2,"maxTurns":4}.'
+        );
 
+        runCard.appendChild(runBody);
         runGrid.appendChild(runCard);
       });
       runsPanel.appendChild(runGrid);
@@ -3941,10 +5174,10 @@
     copy.appendChild(
       createEl(
         'p',
-        null,
-        skill
-          ? 'Edit the markdown instructions saved with this persona-local skill.'
-          : 'This skill is no longer available.'
+	        null,
+	        skill
+	          ? 'Edit the markdown instructions saved with this persona-local skill.'
+	          : 'This skill is no longer available.'
       )
     );
     header.appendChild(copy);
@@ -3961,15 +5194,15 @@
       body.appendChild(createEl('div', 'persona-lab-error', state.skillEditorError));
     }
     if (skill) {
-      var editor = createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor');
-      editor.value = state.skillEditorDraft || '';
-      editor.placeholder = 'Add markdown instructions for when and how this custom skill should be used.';
+	      var editor = createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor');
+	      editor.value = state.skillEditorDraft || '';
+	      editor.placeholder = 'Add markdown instructions for when and how this custom skill should be used.';
       bindInput(editor, function () {
         state.skillEditorDraft = editor.value;
       });
       renderFieldGroup(body, 'Content', editor);
-    } else {
-      body.appendChild(createEl('div', 'persona-lab-empty', 'This skill is no longer available.'));
+	    } else {
+	      body.appendChild(createEl('div', 'persona-lab-empty', 'This skill is no longer available.'));
     }
     modal.appendChild(body);
 
@@ -4126,7 +5359,9 @@
       createEl(
         'p',
         null,
-        'Shape the persona, choose its tools, and launch saved test runs from the same draft.'
+        state.organizationName
+          ? 'Shape personas for ' + state.organizationName + ', choose scoped tools, and launch saved test runs from the same draft.'
+          : 'Shape the persona, choose its tools, and launch saved test runs from the same draft.'
       )
     );
     toolbar.appendChild(titleCopy);
@@ -4230,7 +5465,17 @@
       state.form.definition.owner = ownerInput.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(identityGrid, 'Owner', ownerInput, 'Team, person, or system responsible for maintaining this persona.');
+    renderFieldGroup(identityGrid, 'Owner', ownerInput, 'Team, person, or system responsible for maintaining this persona. Example: Customer Success Ops.');
+    var metadataGroupInput = markFocusKey(createEl('input', 'persona-lab-input'), 'overview-metadata-group');
+    metadataGroupInput.value = state.form.definition.metadataGroup || '';
+    metadataGroupInput.placeholder = isSystemPersonaSource(state.form.definition)
+      ? SYSTEM_PERSONA_GROUP
+      : 'Client Success';
+    bindInput(metadataGroupInput, function () {
+      state.form.definition.metadataGroup = metadataGroupInput.value;
+      updateDirtyState(state);
+    });
+    renderFieldGroup(identityGrid, 'Metadata group', metadataGroupInput, 'Sidebar folder used to group this persona. Example: Client Success, Email Operations, or Reporting.');
     identity.appendChild(identityGrid);
     var definitionDescription = createEl('textarea', 'persona-lab-textarea');
     definitionDescription.value = state.form.definition.description;
@@ -4238,7 +5483,7 @@
       state.form.definition.description = definitionDescription.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(identity, 'Description', definitionDescription, 'Short summary used in catalogs and handoffs.');
+    renderFieldGroup(identity, 'Description', definitionDescription, 'Short summary used in catalogs and handoffs. Example: Reviews inbound customer email and drafts prioritized replies.');
     content.appendChild(identity);
 
     var promptPanel = createEl('section', 'persona-lab-panel');
@@ -4254,14 +5499,14 @@
       state.form.draft.summary = summaryInput.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'Summary', summaryInput, 'One sentence describing what this persona is for.');
+    renderFieldGroup(promptPanel, 'Summary', summaryInput, 'One sentence describing what this persona is for. Example: Triage customer emails and prepare concise next-step recommendations.');
     var draftDescription = createEl('textarea', 'persona-lab-textarea');
     draftDescription.value = state.form.draft.description;
     bindInput(draftDescription, function () {
       state.form.draft.description = draftDescription.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'Draft notes', draftDescription, 'Internal authoring notes for this draft.');
+    renderFieldGroup(promptPanel, 'Draft notes', draftDescription, 'Internal authoring notes for this draft. Example: Validate tone against the support playbook before promotion.');
     var promptInput = createEl('textarea', 'persona-lab-textarea');
     promptInput.style.minHeight = '220px';
     promptInput.value = state.form.prompt;
@@ -4269,7 +5514,7 @@
       state.form.prompt = promptInput.value;
       updateDirtyState(state);
     });
-    renderFieldGroup(promptPanel, 'System prompt', promptInput, 'The main instruction block sent to the LLM.');
+    renderFieldGroup(promptPanel, 'System prompt', promptInput, 'The main instruction block sent to the LLM. Example: You are a calm customer operations specialist. Ask one clarifying question when the request is ambiguous, then produce a short action list.');
     appendSectionHeading(
       promptPanel,
       'h3',
@@ -4283,7 +5528,7 @@
     appendSectionHeading(
       policyPanel,
       'h2',
-      'Capabilities',
+      'Runtime',
       'Models, delegation behavior, sandboxes, connectors, and precise tool permissions.'
     );
     var policyGrid = createEl('div', 'persona-lab-grid');
@@ -4294,7 +5539,8 @@
       buildModelSelect(registries, state.form.draft.modelPolicy.defaultModel, function (value) {
         state.form.draft.modelPolicy.defaultModel = value;
         updateDirtyState(state);
-      }, false)
+      }, false),
+      'General-purpose model used for normal turns. Example: openai/gpt-5-mini for fast everyday execution.'
     );
     renderFieldGroup(
       policyGrid,
@@ -4302,7 +5548,8 @@
       buildModelSelect(registries, state.form.draft.modelPolicy.fastModel || '', function (value) {
         state.form.draft.modelPolicy.fastModel = value;
         updateDirtyState(state);
-      })
+      }),
+      'Lower-latency model for quick routing or lightweight turns. Example: google/gemini-3-flash-preview.'
     );
     renderFieldGroup(
       policyGrid,
@@ -4310,7 +5557,8 @@
       buildModelSelect(registries, state.form.draft.modelPolicy.reasoningModel || '', function (value) {
         state.form.draft.modelPolicy.reasoningModel = value;
         updateDirtyState(state);
-      })
+      }),
+      'Higher-reasoning model for complex work. Example: openai/gpt-5.'
     );
     policyPanel.appendChild(policyGrid);
 
@@ -4327,7 +5575,7 @@
         setError(state, stringifyError(error));
       }
     });
-    renderFieldGroup(policyPanel, 'Workflow model overrides', workflowModels, 'Optional JSON map from workflow key to model ID.');
+    renderFieldGroup(policyPanel, 'Workflow model overrides', workflowModels, 'Optional JSON map from workflow key to model ID. Example: {"email_triage":"openai/gpt-5-mini"}.');
 
     state.form.draft.orchestration = normalizeOrchestration(state.form.draft.orchestration);
     var orchestration = state.form.draft.orchestration;
@@ -4353,16 +5601,17 @@
       policyPanel,
       'h3',
       'Orchestration',
-      'Controls whether this persona can delegate to subagents, coordinate child runs, or run alone.'
+      'Controls whether this persona can delegate to subagents, coordinate child runs, or run alone. Example: use Coordinator + Delegate for research personas that split work across specialists.'
     );
     var orchestrationGrid = createEl('div', 'persona-lab-grid');
     renderFieldGroup(
       orchestrationGrid,
-      'Capability',
+      'Role',
       buildChoiceSelect(capabilityOptions, orchestration.capability, function (value) {
         state.form.draft.orchestration.capability = value;
         updateDirtyState(state);
-      })
+      }),
+      'What orchestration role this persona may play. Example: Delegate for a specialist, Coordinator + Delegate for a lead researcher.'
     );
     renderFieldGroup(
       orchestrationGrid,
@@ -4370,7 +5619,8 @@
       buildChoiceSelect(dispatchModeOptions, orchestration.dispatchMode, function (value) {
         state.form.draft.orchestration.dispatchMode = value;
         updateDirtyState(state);
-      })
+      }),
+      'How subagent work is approved. Example: Review when a human should inspect proposed launches first.'
     );
     var maxParallelInput = createEl('input', 'persona-lab-input');
     maxParallelInput.type = 'number';
@@ -4387,7 +5637,7 @@
       );
       updateDirtyState(state);
     });
-    renderFieldGroup(orchestrationGrid, 'Max parallel subagents', maxParallelInput);
+    renderFieldGroup(orchestrationGrid, 'Max parallel subagents', maxParallelInput, 'Maximum child agents this persona may run at once. Example: 3 for balanced research without overwhelming the workspace.');
     var maxDepthInput = createEl('input', 'persona-lab-input');
     maxDepthInput.type = 'number';
     maxDepthInput.min = '0';
@@ -4398,7 +5648,7 @@
       state.form.draft.orchestration.maxDepth = clampInteger(maxDepthInput.value, 0, 3, 1);
       updateDirtyState(state);
     });
-    renderFieldGroup(orchestrationGrid, 'Max depth', maxDepthInput);
+    renderFieldGroup(orchestrationGrid, 'Max depth', maxDepthInput, 'How many delegation levels are allowed. Example: 1 lets the persona create workers but prevents workers from creating more workers.');
     policyPanel.appendChild(orchestrationGrid);
 
     var sandboxMode = createEl('select', 'persona-lab-select');
@@ -4415,10 +5665,10 @@
     bindInput(sandboxMode, function () {
       if (sandboxMode.value === 'brokered') {
         state.form.draft.sandboxPolicy = {
-          mode: 'brokered',
-          provider: 'cloudflare-sandbox',
-          exportToolName:
-            state.form.draft.sandboxPolicy.exportToolName || 'finance_report_export',
+	          mode: 'brokered',
+	          provider: 'cloudflare-sandbox',
+	          exportToolName:
+	            state.form.draft.sandboxPolicy.exportToolName || 'sandbox_artifact_export',
         };
       } else {
         state.form.draft.sandboxPolicy = { mode: 'disabled' };
@@ -4430,7 +5680,7 @@
       policyPanel,
       'Sandbox policy',
       sandboxMode,
-      'Allows controlled execution tools for personas that need files, generated reports, or workspace operations.'
+      'Allows controlled execution tools for personas that need files, generated reports, or workspace operations. Example: enable for a reporting persona that exports CSV or PDF artifacts.'
     );
     if (state.form.draft.sandboxPolicy.mode === 'brokered') {
       var exportTool = createEl('input', 'persona-lab-input');
@@ -4440,58 +5690,78 @@
         updateDirtyState(state);
       });
       renderFieldGroup(
-        policyPanel,
-        'Sandbox export tool',
-        exportTool,
-        'Stable snake_case tool name exposed for sandbox exports.'
+	        policyPanel,
+	        'Sandbox export tool',
+	        exportTool,
+	        'Stable snake_case tool name exposed for sandbox exports. Example: sandbox_artifact_export.'
       );
     }
 
-    state.form.draft.toolPolicy = ensureToolPolicyShape(state.form.draft.toolPolicy);
-    var toolRegistry = ensureObject(registries.toolRegistry);
-    var businessToolOptions = ensureArray(toolRegistry.businessToolOptions).length
-      ? toolRegistry.businessToolOptions
-      : ensureArray(toolRegistry.businessTools);
-    var connectorOptions = ensureArray(toolRegistry.connectorOptions).length
-      ? toolRegistry.connectorOptions
-      : ensureArray(toolRegistry.connectors);
+	    state.form.draft.toolPolicy = ensureToolPolicyShape(state.form.draft.toolPolicy);
+	    var toolRegistry = ensureObject(registries.toolRegistry);
+	    var assetRegistry = assetRegistryForState(state, registries);
+	    var flatBusinessToolOptions = ensureArray(toolRegistry.businessToolOptions).length
+	      ? toolRegistry.businessToolOptions
+	      : ensureArray(toolRegistry.businessTools);
+	    var flatConnectorOptions = ensureArray(toolRegistry.connectorOptions).length
+	      ? toolRegistry.connectorOptions
+	      : ensureArray(toolRegistry.connectors);
+	    var businessToolOptions = choiceOptionsFromAssets(
+	      assetRegistryWithoutRegisteredRuntimeAssets(assetRegistry),
+	      'STATIC_TOOL',
+	      flatBusinessToolOptions,
+	      function (asset) { return asset.toolName || asset.key; }
+	    );
+		    var connectorOptions = choiceOptionsFromAssets(
+		      assetRegistry,
+		      'CONNECTOR_GRANT',
+		      flatConnectorOptions,
+		      function (asset) { return asset.connectorKey || asset.key; }
+	    );
+	    var runtimeToolOptions = ensureArray(toolRegistry.runtimeToolOptions);
+	    var toolOptions = unifiedToolOptions(
+	      businessToolOptions,
+	      runtimeToolOptions,
+	      state.form.draft.toolPolicy.allowedRuntimeToolIds
+	    );
+	    var capabilityOptions = capabilityOptionsFromRegistries(assetRegistry, registries);
 
-    appendSectionHeading(
-      policyPanel,
-      'h3',
-      'Tools by ID',
-      'Preferred tool grants. Each ID follows connectorKey:toolName and remains stable for MCPViews-installed plugin tools.'
-    );
-    policyPanel.appendChild(buildRuntimeToolSelector(state, ensureArray(toolRegistry.runtimeToolOptions)));
-
-    appendSectionHeading(
-      policyPanel,
-      'h3',
-      'Static tools',
-      'Compatibility grants for first-party tools already known to the cloud backend.'
-    );
-    policyPanel.appendChild(
-      buildCheckboxGrid(
-        businessToolOptions,
-        state.form.draft.toolPolicy.allowedBusinessTools,
-        function (key) {
-          state.form.draft.toolPolicy.allowedBusinessTools = toggleListValue(
-            state.form.draft.toolPolicy.allowedBusinessTools,
-            key
-          );
-          updateDirtyState(state);
-          renderState(state);
-        }
-      )
-    );
-    appendSectionHeading(
-      policyPanel,
-      'h3',
-      'Connector grants',
-      'Broad connector-level access. Use the MCPViews Plugins connector only when this persona may use all installed plugin tools.'
-    );
-    policyPanel.appendChild(
-      buildCheckboxGrid(
+	    policyPanel.appendChild(renderCustomToolRegistrationPanel(state));
+	    appendSectionHeading(
+	      policyPanel,
+	      'h3',
+	      'Tools',
+	      'Choose the specific actions this persona can use. Built-in tools and connected app tools are shown together by service.'
+	    );
+	    policyPanel.appendChild(
+	      buildGroupedChoiceSelector(
+	        toolOptions,
+	        selectedToolValues(state.form),
+	        function (value) {
+	          toggleToolSelection(state, value);
+	          updateDirtyState(state);
+	          renderState(state);
+	        },
+	        {
+	          defaultGroup: 'Tools',
+	          emptyMessage: 'No tools are available from the backend registry or connected app catalog.',
+	          itemSingular: 'tool',
+	          itemPlural: 'tools',
+	          searchPlaceholder: 'Search tools, services, descriptions, or groups',
+	          searchLabel: 'Search tools by name, service, description, or group',
+	          showKeys: false,
+	          showCopyButton: false,
+	        }
+	      )
+	    );
+	    appendSectionHeading(
+	      policyPanel,
+	      'h3',
+	      'Connected services',
+	      'Give broad access to a whole service only when the persona should use most of that service. Prefer selecting specific tools above when possible.'
+	    );
+	    policyPanel.appendChild(
+	      buildGroupedChoiceSelector(
         connectorOptions,
         state.form.draft.toolPolicy.allowedConnectorKeys,
         function (key) {
@@ -4501,71 +5771,81 @@
           );
           updateDirtyState(state);
           renderState(state);
-        }
-      )
-    );
+	        },
+	        {
+	          defaultGroup: 'Connected services',
+	          emptyMessage: 'No connected services are available from the backend registry.',
+	          itemSingular: 'service',
+	          itemPlural: 'services',
+	          searchPlaceholder: 'Search connected services, descriptions, or groups',
+	          searchLabel: 'Search connected services by name, description, or group',
+	          showKeys: false,
+	          showCopyButton: false,
+	        }
+	      )
+	    );
     content.appendChild(policyPanel);
 
-    var skillPanel = createEl('section', 'persona-lab-panel');
-    appendSectionHeading(
-      skillPanel,
-      'h2',
-      'Skills',
-      'Reusable instructions, prompt templates, variables, and workflow references bundled into the persona.'
-    );
-    appendSectionHeading(
-      skillPanel,
-      'h3',
-      'Built-in skills',
-      'Select registered skills this persona should receive. Examples: tdd-workflow, solid-review, or a domain-specific analysis skill.'
-    );
-    skillPanel.appendChild(
-      buildCheckboxGrid(
-        ensureArray(registries.builtInSkills),
-        state.form.draft.builtInSkills,
-        function (key) {
-          state.form.draft.builtInSkills = toggleListValue(state.form.draft.builtInSkills, key);
-          updateDirtyState(state);
-          renderState(state);
-        }
-      )
-    );
-    appendSectionHeading(
-      skillPanel,
-      'h3',
-      'Workflow refs',
-      'Select reusable workflow definitions the persona can follow. Examples: weekly-report-review or customer-escalation-triage.'
-    );
-    skillPanel.appendChild(
-      buildCheckboxGrid(
-        ensureArray(registries.workflows),
-        state.form.draft.workflowRefs,
-        function (key) {
-          state.form.draft.workflowRefs = toggleListValue(state.form.draft.workflowRefs, key);
-          updateDirtyState(state);
-          renderState(state);
-        }
-      )
-    );
+	    var skillPanel = createEl('section', 'persona-lab-panel');
+	    appendSectionHeading(
+	      skillPanel,
+	      'h2',
+	      'Skills',
+	      'Reusable instructions, prompt templates, variables, and workflow runbooks bundled into the persona.'
+	    );
+	    appendSectionHeading(
+	      skillPanel,
+	      'h3',
+	      'Shared skills',
+	      'Select registered instructions and workflow runbooks this persona should receive.'
+	    );
+	    skillPanel.appendChild(
+	      buildGroupedChoiceSelector(
+	        capabilityOptions,
+	        selectedCapabilityValues(state.form),
+	        function (key) {
+	          toggleCapabilitySelection(state, key);
+	          updateDirtyState(state);
+	          renderState(state);
+	        },
+	        {
+	          defaultGroup: 'Skills',
+	          emptyMessage: 'No shared skills are available from the backend registry.',
+	          itemSingular: 'skill',
+	          itemPlural: 'skills',
+	          searchPlaceholder: 'Search skills, keys, descriptions, variables, or metadata groups',
+	          searchLabel: 'Search skills by name, key, description, variable, or metadata group',
+	          copyLabel: 'Copy skill key',
+	        }
+	      )
+	    );
 
-    appendSectionHeading(
-      skillPanel,
-      'h3',
-      'Custom skills',
-      'Custom skills are persona-local markdown instructions with metadata. Use them for behavior that is not in the shared skill registry.'
-    );
+	    appendSectionHeading(
+	      skillPanel,
+	      'h3',
+	      'Custom skills',
+	      'Custom skills are persona-local markdown instructions with variables. Use them for behavior that is not in the shared skill registry.'
+	    );
     var skillList = createEl('div', 'persona-lab-section-list');
-    var customSkillHelp = {
-      key: 'Stable machine-readable skill id. Use lowercase kebab-case. Example: renewal-risk-review.',
-      title: 'Human-friendly skill name shown in Persona Studio. Example: Renewal Risk Review.',
-      summary: 'One sentence describing when this skill applies. Example: Use when assessing account renewal risks before customer outreach.',
-      content: 'Markdown instructions passed to the persona. Example: include trigger conditions, required checks, and output format bullets.',
-      variables: 'Optional values collected before the skill prompt is generated.',
-    };
+	    var customSkillHelp = {
+	      key: 'Stable machine-readable skill id. Use lowercase kebab-case. Example: renewal-risk-review.',
+	      title: 'Human-friendly skill name shown in Persona Studio. Example: Renewal Risk Review.',
+	      summary: 'One sentence describing when this skill applies. Example: Use when assessing account renewal risks before customer outreach.',
+	      content: 'Markdown instructions passed to the persona. Example: include trigger conditions, required checks, and output format bullets.',
+	      variables: 'Optional values collected before the skill prompt is generated. Example: account_name, renewal_date, or risk_notes.',
+	    };
     ensureArray(state.form.customSkills).forEach(function (skill, index) {
-      var skillCard = createEl('div', 'persona-lab-skill');
+      var skillCard = createEl('details', 'persona-lab-skill persona-lab-details');
+      skillCard.open = index === 0 || state.expandedCustomSkillIndex === index || !skill.key;
+      var skillSummary = createEl('summary', 'persona-lab-details-summary');
+      var variableCount = ensureArray(skill.variables).length;
+      skillSummary.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+	      skillSummary.appendChild(createEl('strong', null, skill.title || ('Skill ' + (index + 1))));
+      skillSummary.appendChild(createEl('span', 'persona-lab-badge', formatNumber(variableCount) + ' variable' + (variableCount === 1 ? '' : 's')));
+      skillCard.appendChild(skillSummary);
+      var skillBody = createEl('div', 'persona-lab-details-body');
       var skillHeader = createEl('div', 'persona-lab-skill-header');
-      skillHeader.appendChild(createEl('strong', null, skill.title || ('Skill ' + (index + 1))));
+      skillHeader.appendChild(createEl('strong', null, skill.key || ('custom-skill-' + (index + 1))));
       var skillActions = createEl('div', 'persona-lab-skill-actions');
       var edit = createEl('button', 'persona-lab-button', 'Edit');
       edit.type = 'button';
@@ -4583,12 +5863,13 @@
           state.skillEditorError = '';
         }
         state.form.customSkills.splice(index, 1);
+        state.expandedCustomSkillIndex = Math.min(index, state.form.customSkills.length - 1);
         updateDirtyState(state);
         renderState(state);
       });
       skillActions.appendChild(remove);
       skillHeader.appendChild(skillActions);
-      skillCard.appendChild(skillHeader);
+      skillBody.appendChild(skillHeader);
       ['key', 'title', 'summary'].forEach(function (field) {
         var input = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-skill-' + index + '-' + field);
         input.value = skill[field] || '';
@@ -4596,33 +5877,35 @@
           skill[field] = input.value;
           updateDirtyState(state);
         });
-        renderFieldGroup(skillCard, field, input, customSkillHelp[field]);
+        renderFieldGroup(skillBody, field, input, customSkillHelp[field]);
       });
       renderFieldGroup(
-        skillCard,
+        skillBody,
         'content',
         createEl('pre', 'persona-lab-skill-preview', compactSkillContent(skill.content)),
         customSkillHelp.content
       );
-      skillCard.appendChild(buildSkillVariableEditor(state, skill, index));
+      skillBody.appendChild(buildSkillVariableEditor(state, skill, index));
+      skillCard.appendChild(skillBody);
       skillList.appendChild(skillCard);
     });
-    if (!state.form.customSkills.length) {
-      skillList.appendChild(createEl('div', 'persona-lab-empty', 'No custom skills yet.'));
-    }
-    skillPanel.appendChild(skillList);
-    var addSkill = createEl('button', 'persona-lab-button', 'Add custom skill');
+	    if (!state.form.customSkills.length) {
+	      skillList.appendChild(createEl('div', 'persona-lab-empty', 'No custom skills yet.'));
+	    }
+	    skillPanel.appendChild(skillList);
+	    var addSkill = createEl('button', 'persona-lab-button', 'Add custom skill');
     addSkill.type = 'button';
-    addSkill.addEventListener('click', function () {
-      state.form.customSkills.push({
-        key: 'custom-skill-' + (state.form.customSkills.length + 1),
-        title: 'New custom skill',
-        summary: 'Describe what this skill adds.',
-        content: 'Add markdown instructions here.',
-        variables: [],
+	    addSkill.addEventListener('click', function () {
+	      state.form.customSkills.push({
+	        key: 'custom-skill-' + (state.form.customSkills.length + 1),
+	        title: 'New custom skill',
+	        summary: 'Describe what this skill adds.',
+	        content: 'Add markdown instructions here.',
+	        variables: [],
       });
       state.skillEditorOpen = true;
       state.skillEditorIndex = state.form.customSkills.length - 1;
+      state.expandedCustomSkillIndex = state.skillEditorIndex;
       state.skillEditorDraft = 'Add markdown instructions here.';
       state.skillEditorError = '';
       updateDirtyState(state);
@@ -4649,6 +5932,7 @@
 
   function renderState(state) {
     if (!state.container) return;
+    hideFloatingTooltip();
     captureScrollPositions(state);
     var activeState = captureActiveElementState(state);
     replaceSessionChrome(state, state.current && state.current.document
@@ -4680,6 +5964,7 @@
     ensureStyles();
     var state = getSessionState();
     state.container = container;
+    syncOrganizationContext(state);
     renderState(state);
     if (!state.bootstrapLoaded && !state.bootstrapPromise) {
       fetchBootstrap(state);
