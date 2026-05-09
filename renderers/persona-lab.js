@@ -5,12 +5,13 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-04-30-persona-asset-nav-v1';
+  var RENDERER_VERSION = '2026-05-09-skill-variable-insert-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
   var SYSTEM_PERSONA_GROUP = 'System';
   var UNGROUPED_PERSONA_GROUP = 'Ungrouped';
+  var PERSONA_FOLDER_CATEGORY_KEY_PREFIX = 'persona-folder-';
   var FALLBACK_PERSONA_STUDIO_MODELS = [
     'google/gemini-3-flash-preview',
     'openai/gpt-5-mini',
@@ -72,6 +73,35 @@
     };
   }
 
+  function defaultCreatePersonaDraft(metadataGroup) {
+    return {
+      key: '',
+      displayName: '',
+      description: '',
+      metadataGroup: normalizePersonaFolderLabel(metadataGroup),
+    };
+  }
+
+  function defaultPersonaFolderDraft() {
+    return {
+      name: '',
+      description: '',
+    };
+  }
+
+  function defaultArchiveConfirmDraft(reason) {
+    return {
+      reason: String(reason || ''),
+      confirmed: false,
+    };
+  }
+
+  function defaultDeleteConfirmDraft() {
+    return {
+      confirmation: '',
+    };
+  }
+
   function getSessionState() {
     var globalState = getGlobalState();
     var sessionId = currentSessionId();
@@ -86,6 +116,7 @@
         organizationKind: '',
         showArchivedPersonas: false,
         navGroupExpansion: {},
+        personaFolders: [],
         personas: [],
         registries: null,
         assetRegistry: null,
@@ -97,6 +128,23 @@
         customToolDraft: defaultCustomToolDraft(),
         customToolRegistering: false,
         customToolError: '',
+        createPersonaModalOpen: false,
+        createPersonaDraft: defaultCreatePersonaDraft(''),
+        createPersonaSubmitting: false,
+        createPersonaError: '',
+        createPersonaKeyTouched: false,
+        folderCreateModalOpen: false,
+        folderDraft: defaultPersonaFolderDraft(),
+        folderCreateSubmitting: false,
+        folderCreateError: '',
+        archiveConfirmModalOpen: false,
+        archiveConfirmDraft: defaultArchiveConfirmDraft(),
+        archiveConfirmSubmitting: false,
+        archiveConfirmError: '',
+        deleteConfirmModalOpen: false,
+        deleteConfirmDraft: defaultDeleteConfirmDraft(),
+        deleteConfirmSubmitting: false,
+        deleteConfirmError: '',
         selectedPersonaKey: null,
         loadingPersona: false,
         personaPromise: null,
@@ -130,6 +178,9 @@
         runDetailPayload: null,
         contentScrollTop: 0,
         contentScrollLeft: 0,
+        navScrollTop: 0,
+        navScrollTargetKey: '',
+        navScrollTargetGroupKey: '',
         modalScrollTop: 0,
         drawerScrollTop: 0,
         chromeKey: '',
@@ -182,12 +233,30 @@
     state.bootstrapLoaded = false;
     state.bootstrapPromise = null;
     state.personas = [];
+    state.personaFolders = [];
     state.navGroupExpansion = {};
     state.registries = null;
     state.assetRegistry = null;
     state.customToolDraft = defaultCustomToolDraft();
     state.customToolRegistering = false;
     state.customToolError = '';
+    state.createPersonaModalOpen = false;
+    state.createPersonaDraft = defaultCreatePersonaDraft('');
+    state.createPersonaSubmitting = false;
+    state.createPersonaError = '';
+    state.createPersonaKeyTouched = false;
+    state.folderCreateModalOpen = false;
+    state.folderDraft = defaultPersonaFolderDraft();
+    state.folderCreateSubmitting = false;
+    state.folderCreateError = '';
+    state.archiveConfirmModalOpen = false;
+    state.archiveConfirmDraft = defaultArchiveConfirmDraft();
+    state.archiveConfirmSubmitting = false;
+    state.archiveConfirmError = '';
+    state.deleteConfirmModalOpen = false;
+    state.deleteConfirmDraft = defaultDeleteConfirmDraft();
+    state.deleteConfirmSubmitting = false;
+    state.deleteConfirmError = '';
     clearSelectedPersona(state);
     return true;
   }
@@ -202,7 +271,7 @@
     var style = document.createElement('style');
     style.id = 'parallel-run-workshop-theme';
     style.textContent = [
-      '.persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-blur:12px;--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success:#22c55e;--color-success-bg:rgba(34,197,94,0.15);--color-success-text:#86efac;--color-error:#ef4444;--color-error-bg:rgba(239,68,68,0.15);--color-error-text:#fca5a5;--color-warning:#eab308;--color-warning-bg:rgba(234,179,8,0.15);--color-warning-text:#fde047;--color-info:#3b82f6;--color-info-bg:rgba(59,130,246,0.15);--color-info-text:#93bbfd;--font-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;display:grid;grid-template-columns:304px minmax(0,1fr);height:100%;min-height:0;background:linear-gradient(180deg,rgba(255,255,255,0.025),transparent 32%),var(--bg-app);color:var(--text-primary);font-family:var(--font-sans)}',
+      '.persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-blur:12px;--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success:#22c55e;--color-success-bg:rgba(34,197,94,0.15);--color-success-text:#86efac;--color-error:#ef4444;--color-error-bg:rgba(239,68,68,0.15);--color-error-text:#fca5a5;--color-warning:#eab308;--color-warning-bg:rgba(234,179,8,0.15);--color-warning-text:#fde047;--color-info:#3b82f6;--color-info-bg:rgba(59,130,246,0.15);--color-info-text:#93bbfd;--font-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;display:grid;grid-template-columns:304px minmax(0,1fr);height:100%;min-height:0;overflow:hidden;background:var(--bg-app);color:var(--text-primary);font-family:var(--font-sans)}',
       '@media (prefers-color-scheme: light){.persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}}',
       'html[data-theme="dark"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.06);--glass-bg-heavy:rgba(255,255,255,0.1);--glass-border:rgba(255,255,255,0.1);--glass-shadow:0 8px 32px rgba(0,0,0,0.4);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.5);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.06);--bg-app:#0f1117;--bg-surface:rgba(255,255,255,0.05);--bg-surface-hover:rgba(255,255,255,0.08);--bg-surface-subtle:rgba(255,255,255,0.03);--text-primary:rgba(255,255,255,0.95);--text-secondary:rgba(255,255,255,0.65);--text-tertiary:rgba(255,255,255,0.38);--accent-primary:#818cf8;--accent-primary-hover:#6366f1;--accent-primary-ghost:rgba(129,140,248,0.12);--border-default:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.04);--border-strong:rgba(255,255,255,0.15);--color-success-text:#86efac;--color-error-text:#fca5a5;--color-warning-text:#fde047;--color-info-text:#93bbfd}',
       'html[data-theme="light"] .persona-lab-root{--glass-bg:rgba(255,255,255,0.7);--glass-bg-heavy:rgba(255,255,255,0.85);--glass-border:rgba(0,0,0,0.08);--glass-shadow:0 8px 32px rgba(0,0,0,0.08);--glass-shadow-elevated:0 12px 40px rgba(0,0,0,0.12);--glass-inset-highlight:inset 0 1px 0 rgba(255,255,255,0.5);--bg-app:#f5f5f7;--bg-surface:rgba(255,255,255,0.8);--bg-surface-hover:rgba(255,255,255,0.95);--bg-surface-subtle:rgba(255,255,255,0.55);--text-primary:rgba(0,0,0,0.87);--text-secondary:rgba(0,0,0,0.62);--text-tertiary:rgba(0,0,0,0.42);--accent-primary:#6366f1;--accent-primary-hover:#4f46e5;--accent-primary-ghost:rgba(99,102,241,0.12);--border-default:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);--border-strong:rgba(0,0,0,0.15);--color-success-text:#16a34a;--color-error-text:#dc2626;--color-warning-text:#ca8a04;--color-info-text:#2563eb}',
@@ -211,23 +280,31 @@
       '.persona-lab-root code{font-family:var(--font-mono)}',
       '@keyframes persona-lab-stagger-fade-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}',
       '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
-      '.persona-lab-nav{padding:18px;display:flex;flex-direction:column;gap:14px;min-height:0;background:linear-gradient(180deg,rgba(129,140,248,0.16),transparent 240px),var(--glass-bg-heavy)}',
+      '.persona-lab-nav{padding:18px;display:flex;flex-direction:column;gap:14px;height:100%;min-height:0;overflow:hidden;background:var(--glass-bg-heavy)}',
       '.persona-lab-nav-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
-      '.persona-lab-nav-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}',
-      '.persona-lab-nav-title{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
+      '.persona-lab-nav-controls{display:flex;flex-direction:column;align-items:stretch;gap:10px}',
+      '.persona-lab-nav-controls>.persona-lab-button{width:100%}',
+      '.persona-lab-segmented{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:3px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-segmented button{appearance:none;min-height:30px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer}',
+      '.persona-lab-segmented button:hover:not(:disabled){color:var(--text-primary);background:var(--bg-surface-hover)}',
+      '.persona-lab-segmented button.active{color:var(--text-primary);background:var(--accent-primary-ghost);border-color:rgba(129,140,248,.28)}',
+      '.persona-lab-segmented button:disabled{cursor:not-allowed;opacity:.6}',
+      '.persona-lab-nav-title{margin:0;font-size:11px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
       '.persona-lab-nav-header strong{display:block;margin-top:4px;font-size:18px;line-height:1.2}',
       '.persona-lab-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary);font-size:12px;font-weight:700;line-height:1.3;user-select:none}',
       '.persona-lab-toggle input{width:16px;height:16px;accent-color:var(--accent-primary);cursor:pointer}',
-      '.persona-lab-nav-list{display:flex;flex-direction:column;gap:4px;overflow:auto;padding-right:4px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
+      '.persona-lab-nav-list{display:flex;flex:1 1 auto;min-height:0;max-height:100%;flex-direction:column;gap:4px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-right:4px;padding-bottom:12px;scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
       '.persona-lab-nav-list::-webkit-scrollbar,.persona-lab-content::-webkit-scrollbar,.persona-lab-modal::-webkit-scrollbar,.persona-lab-drawer-body::-webkit-scrollbar{width:8px;height:8px}',
       '.persona-lab-nav-list::-webkit-scrollbar-thumb,.persona-lab-content::-webkit-scrollbar-thumb,.persona-lab-modal::-webkit-scrollbar-thumb,.persona-lab-drawer-body::-webkit-scrollbar-thumb{background:rgba(127,127,127,.28);border-radius:999px}',
-      '.persona-lab-nav-group{border-radius:8px;overflow:hidden}',
-      '.persona-lab-nav-group-summary{list-style:none;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:6px;min-height:28px;padding:4px 6px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}',
+      '.persona-lab-nav-group{flex:0 0 auto;border-radius:8px;overflow:hidden}',
+      '.persona-lab-nav-group-summary{list-style:none;display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:center;gap:6px;min-height:28px;padding:4px 6px;border-radius:6px;color:var(--text-secondary);cursor:pointer;font-size:11px;font-weight:800;letter-spacing:0;text-transform:uppercase}',
       '.persona-lab-nav-group-summary::-webkit-details-marker{display:none}',
       '.persona-lab-nav-group-summary:hover{background:var(--bg-surface-subtle);color:var(--text-primary)}',
       '.persona-lab-nav-group-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.persona-lab-nav-group-count{font-size:10px;color:var(--text-tertiary);font-weight:800}',
       '.persona-lab-nav-group-children{display:flex;flex-direction:column;gap:1px;margin:1px 0 7px 11px;padding-left:7px;border-left:1px solid var(--border-default)}',
+      '.persona-lab-nav-folder-empty{display:flex;flex-direction:column;gap:8px;margin:3px 0 8px;padding:10px;border:1px dashed var(--glass-border);border-radius:8px;background:var(--bg-surface-subtle);color:var(--text-secondary);font-size:12px;line-height:1.4}',
+      '.persona-lab-nav-folder-empty .persona-lab-button{align-self:flex-start}',
       '.persona-lab-nav-group-caret{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;color:var(--text-tertiary);font-size:12px;transition:transform .15s ease}',
       '.persona-lab-nav-group[open]>.persona-lab-nav-group-summary .persona-lab-nav-group-caret{transform:rotate(90deg)}',
       '.persona-lab-nav-item{appearance:none;width:100%;border:1px solid transparent;border-radius:6px;padding:5px 7px;background:transparent;cursor:pointer;display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:7px;color:var(--text-primary);text-align:left;transition:border-color .12s ease,background .12s ease,color .12s ease;animation:persona-lab-stagger-fade-in .18s ease both}',
@@ -247,16 +324,16 @@
       '.persona-lab-badge.status-running,.persona-lab-badge.status-pending,.persona-lab-badge.status-created{background:var(--color-info-bg);color:var(--color-info-text)}',
       '.persona-lab-badge.status-failed,.persona-lab-badge.status-cancelled,.persona-lab-badge.status-partial_failed{background:var(--color-error-bg);color:var(--color-error-text)}',
       '.persona-lab-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:var(--bg-surface-subtle);border:1px solid var(--glass-border);font-size:12px;font-weight:600;color:var(--text-primary)}',
-      '.persona-lab-chip-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-chip-label{font-size:10px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary)}',
       '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0;padding:18px 18px 18px 0;gap:14px}',
-      '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:22px;animation:persona-lab-stagger-fade-in .28s ease both}',
-      '.persona-lab-toolbar h1{margin:4px 0 0;font-size:30px;line-height:1.05;letter-spacing:-.03em}',
+      '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:var(--border-radius-lg);animation:persona-lab-stagger-fade-in .28s ease both}',
+      '.persona-lab-toolbar h1{margin:4px 0 0;font-size:30px;line-height:1.05;letter-spacing:0}',
       '.persona-lab-toolbar p{margin:8px 0 0;color:var(--text-secondary);max-width:760px;line-height:1.6}',
       '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
       '.persona-lab-button{appearance:none;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:600;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease,color .15s ease}',
       '.persona-lab-button.small{padding:7px 10px;border-radius:10px;font-size:12px}',
-      '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface);transform:translateY(-1px)}',
-      '.persona-lab-button.primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-primary-hover));border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(99,102,241,.28)}',
+      '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface)}',
+      '.persona-lab-button.primary{background:var(--accent-primary);border-color:var(--accent-primary);color:#fff}',
       '.persona-lab-button.danger{background:var(--color-error-bg);border-color:rgba(239,68,68,.25);color:var(--color-error-text)}',
       '.persona-lab-button:focus-visible,.persona-lab-input:focus-visible,.persona-lab-textarea:focus-visible,.persona-lab-select:focus-visible,.persona-lab-model-trigger:focus-visible{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 3px var(--accent-primary-ghost)}',
       '.persona-lab-button:disabled{cursor:not-allowed;opacity:.72;transform:none;background:var(--bg-surface-subtle);color:var(--text-tertiary)}',
@@ -267,12 +344,12 @@
       '.persona-lab-error:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-error-bg);border:1px solid rgba(239,68,68,.2);color:var(--color-error-text)}',
       '.persona-lab-content{overflow:auto;padding:2px 0 16px 0;display:flex;flex-direction:column;gap:18px;min-height:0}',
       '.persona-lab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}',
-      '.persona-lab-panel{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-panel{border-radius:var(--border-radius-lg);padding:18px;display:flex;flex-direction:column;gap:14px;animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-panel.compact{gap:10px}',
-      '.persona-lab-panel h2,.persona-lab-panel h3{margin:0;font-size:18px;line-height:1.25;letter-spacing:-.01em}',
+      '.persona-lab-panel h2,.persona-lab-panel h3{margin:0;font-size:18px;line-height:1.25;letter-spacing:0}',
       '.persona-lab-panel p{margin:0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-field{display:flex;flex-direction:column;gap:8px}',
-      '.persona-lab-field label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-field label{font-size:12px;font-weight:700;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary)}',
       '.persona-lab-field-label-row,.persona-lab-heading-row{display:flex;align-items:center;gap:8px;min-width:0}',
       '.persona-lab-heading-row h2,.persona-lab-heading-row h3{min-width:0}',
       '.persona-lab-tooltip{appearance:none;position:relative;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:19px;height:19px;padding:0;border-radius:999px;border:1px solid var(--glass-border);background:var(--bg-surface-subtle);color:var(--text-secondary);font-size:12px;font-weight:800;line-height:1;cursor:help}',
@@ -291,7 +368,7 @@
       '.persona-lab-model-trigger:disabled{cursor:not-allowed;opacity:.72;color:var(--text-tertiary)}',
       '.persona-lab-model-trigger-copy{min-width:0;display:flex;flex-direction:column;gap:3px}',
       '.persona-lab-model-trigger-label{font-size:13px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}',
-      '.persona-lab-model-trigger-provider{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1.2;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.persona-lab-model-trigger-provider{font-size:11px;font-weight:700;letter-spacing:0;text-transform:uppercase;line-height:1.2;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.persona-lab-model-trigger-icon{font-size:14px;color:var(--text-tertiary);transition:transform .15s ease}',
       '.persona-lab-model-select.open .persona-lab-model-trigger-icon{transform:rotate(180deg)}',
       '.persona-lab-model-menu{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:10003;display:none;max-height:min(420px,48vh);overflow:auto;padding:8px;border:1px solid var(--glass-border);border-radius:16px;background:var(--bg-app);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight);scrollbar-width:thin;scrollbar-color:rgba(127,127,127,.3) transparent}',
@@ -301,9 +378,9 @@
       '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider-toggle{appearance:none;width:100%;border:1px solid transparent;background:transparent;color:var(--text-primary);text-align:left;cursor:pointer}',
       '.persona-lab-model-empty,.persona-lab-model-option{border-radius:12px;padding:9px 10px;display:flex;flex:0 0 auto;flex-direction:column;gap:3px}',
       '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
-      '.persona-lab-model-empty.active,.persona-lab-model-option.active{background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 72%),var(--bg-surface)}',
+      '.persona-lab-model-empty.active,.persona-lab-model-option.active{background:var(--accent-primary-ghost)}',
       '.persona-lab-model-provider{flex:0 0 auto;border-radius:14px;background:var(--bg-surface-subtle);overflow:hidden}',
-      '.persona-lab-model-provider-toggle{padding:10px;display:grid;flex:0 0 auto;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary)}',
+      '.persona-lab-model-provider-toggle{padding:10px;display:grid;flex:0 0 auto;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;border-radius:14px;font-size:12px;font-weight:800;letter-spacing:0;text-transform:uppercase;color:var(--text-secondary)}',
       '.persona-lab-model-provider-toggle:hover{background:var(--bg-surface)}',
       '.persona-lab-model-provider-caret{font-size:12px;color:var(--text-tertiary);transition:transform .15s ease}',
       '.persona-lab-model-provider.expanded .persona-lab-model-provider-caret{transform:rotate(90deg)}',
@@ -322,7 +399,7 @@
       '.persona-lab-rule-list{display:flex;flex-direction:column;gap:8px}',
       '.persona-lab-rule-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle);color:var(--text-primary);padding:10px 12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;transition:border-color .15s ease,background .15s ease}',
       '.persona-lab-rule-item:hover,.persona-lab-rule-item.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
-      '.persona-lab-rule-item span{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary);font-weight:800}',
+      '.persona-lab-rule-item span{font-size:11px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary);font-weight:800}',
       '.persona-lab-rule-item strong{font-size:13px;line-height:1.35;font-weight:600;color:var(--text-primary)}',
       '.persona-lab-rule-controls{display:flex;flex-direction:column;gap:10px;min-width:0}',
       '.persona-lab-details{overflow:hidden}',
@@ -370,27 +447,41 @@
       '.persona-lab-skill-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
       '.persona-lab-skill-preview{margin:0;max-height:132px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-border);border-radius:14px;padding:12px;background:rgba(15,23,42,.38);color:var(--text-secondary);font-size:12px;line-height:1.5}',
       'html[data-theme="light"] .persona-lab-skill-preview,.persona-lab-root[data-theme="light"] .persona-lab-skill-preview{background:rgba(255,255,255,.58)}',
+      '.persona-lab-skill-editor-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-skill-editor-tools .persona-lab-helper{max-width:520px}',
+      '.persona-lab-variable-picker{position:relative;z-index:5}',
+      '.persona-lab-variable-picker>summary{list-style:none}',
+      '.persona-lab-variable-picker>summary::-webkit-details-marker{display:none}',
+      '.persona-lab-variable-picker-menu{position:absolute;right:0;top:calc(100% + 8px);width:min(360px,72vw);display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface);box-shadow:var(--glass-shadow-elevated);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur))}',
+      '.persona-lab-variable-picker-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}',
+      '.persona-lab-variable-token{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:10px;padding:8px 10px;background:var(--bg-surface-subtle);color:var(--text-primary);cursor:pointer;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}',
+      '.persona-lab-variable-token:hover{border-color:var(--accent-primary);background:var(--accent-primary-ghost)}',
+      '.persona-lab-variable-token code{font-size:12px;color:var(--color-info-text);white-space:nowrap}',
       '.persona-lab-skill-editor{min-height:min(52vh,520px);font-family:var(--font-mono);font-size:12px}',
       '.persona-lab-json{margin:0;white-space:pre-wrap;word-break:break-word;background:rgba(15,23,42,.88);color:#e5eefc;border-radius:16px;padding:14px;font-size:12px;line-height:1.55;overflow:auto;border:1px solid rgba(148,163,184,.2)}',
       'html[data-theme="light"] .persona-lab-json,.persona-lab-root[data-theme="light"] .persona-lab-json{background:rgba(15,23,42,.96);color:#e5eefc}',
       '.persona-lab-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text-secondary)}',
       '.persona-lab-kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}',
       '.persona-lab-kv-item{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
-      '.persona-lab-kv-item span{display:block;font-size:11px;color:var(--text-tertiary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}',
+      '.persona-lab-kv-item span{display:block;font-size:11px;color:var(--text-tertiary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0;font-weight:700}',
       '.persona-lab-empty{padding:24px;border:1px dashed var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);color:var(--text-secondary);line-height:1.6}',
+      '.persona-lab-confirmation-card{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;border:1px solid rgba(234,179,8,.22);background:var(--color-warning-bg);color:var(--text-primary);line-height:1.5}',
+      '.persona-lab-confirmation-card.danger{border-color:rgba(239,68,68,.28);background:var(--color-error-bg)}',
+      '.persona-lab-confirmation-card strong{font-size:14px}',
+      '.persona-lab-confirmation-card p{margin:0;color:var(--text-secondary)}',
       '.persona-lab-run-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}',
-      '.persona-lab-run-card{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(180deg,rgba(129,140,248,.08),transparent 45%),var(--glass-bg);animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-run-card{border-radius:var(--border-radius-md);padding:18px;display:flex;flex-direction:column;gap:14px;background:var(--glass-bg);animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-run-card.persona-lab-details{padding:0;gap:0}',
       '.persona-lab-run-card>.persona-lab-details-summary{padding:18px}',
       '.persona-lab-run-card>.persona-lab-details-body{padding:18px}',
       '.persona-lab-run-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}',
       '.persona-lab-run-card-header strong{display:block;font-size:19px;line-height:1.15}',
-      '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
+      '.persona-lab-run-eyebrow{font-size:11px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary);font-weight:700}',
       '.persona-lab-run-subtitle{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}',
       '.persona-lab-run-note{font-size:12px;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-run-metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
       '.persona-lab-run-metric,.persona-lab-metric-card{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
-      '.persona-lab-run-metric span,.persona-lab-metric-card span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;font-weight:700}',
+      '.persona-lab-run-metric span,.persona-lab-metric-card span{display:block;font-size:11px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;font-weight:700}',
       '.persona-lab-run-metric strong,.persona-lab-metric-card strong{display:block;font-size:18px;line-height:1.15;color:var(--text-primary)}',
       '.persona-lab-run-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
       '.persona-lab-run-actions-copy{display:flex;flex-direction:column;gap:4px;min-width:180px}',
@@ -398,31 +489,101 @@
       '.persona-lab-helper{font-size:12px;color:var(--text-secondary);line-height:1.5}',
       '.persona-lab-overlay,.persona-lab-drawer-overlay{position:fixed;inset:0;background:rgba(6,10,24,.58);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;z-index:9999}',
       '.persona-lab-overlay{align-items:center;justify-content:center;padding:20px}',
-      '.persona-lab-modal{width:min(980px,100%);max-height:min(88vh,900px);overflow:auto;border-radius:24px;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(129,140,248,.1),transparent 22%),var(--glass-bg-heavy)}',
+      '.persona-lab-modal{width:min(980px,100%);max-height:min(88vh,900px);overflow:auto;border-radius:var(--border-radius-lg);display:flex;flex-direction:column;background:var(--bg-app)}',
       '.persona-lab-modal-header,.persona-lab-modal-footer{padding:22px;border-bottom:1px solid var(--glass-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
-      '.persona-lab-modal-header h2{margin:4px 0 0;font-size:24px;line-height:1.1;letter-spacing:-.03em}',
+      '.persona-lab-modal-header h2{margin:4px 0 0;font-size:24px;line-height:1.1;letter-spacing:0}',
       '.persona-lab-modal-header p{margin:8px 0 0;color:var(--text-secondary);max-width:720px;line-height:1.6}',
       '.persona-lab-modal-body{padding:22px;display:flex;flex-direction:column;gap:18px}',
       '.persona-lab-modal-footer{border-top:1px solid var(--glass-border);border-bottom:none;align-items:center;flex-wrap:wrap}',
       '.persona-lab-stepper{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}',
-      '.persona-lab-step{display:flex;align-items:center;justify-content:center;padding:12px 14px;border-radius:16px;background:var(--bg-surface-subtle);border:1px solid var(--glass-border);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-tertiary)}',
-      '.persona-lab-step.active{border-color:rgba(129,140,248,.38);background:linear-gradient(135deg,var(--accent-primary-ghost),transparent 70%),var(--bg-surface);color:var(--text-primary)}',
+      '.persona-lab-step{display:flex;align-items:center;justify-content:center;padding:12px 14px;border-radius:16px;background:var(--bg-surface-subtle);border:1px solid var(--glass-border);font-size:12px;font-weight:700;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary)}',
+      '.persona-lab-step.active{border-color:rgba(129,140,248,.38);background:var(--accent-primary-ghost);color:var(--text-primary)}',
       '.persona-lab-review-list,.persona-lab-comparison-list,.persona-lab-turn-list{display:flex;flex-direction:column;gap:10px}',
       '.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-comparison-item{display:flex;align-items:center;justify-content:space-between;gap:12px}',
       '.persona-lab-comparison-item strong,.persona-lab-turn-card h4{display:block;margin:0 0 8px}',
       '.persona-lab-summary-banner{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 16px;border-radius:18px;background:var(--bg-surface)}',
-      '.persona-lab-summary-banner.success{border-color:rgba(34,197,94,.24);background:linear-gradient(135deg,rgba(34,197,94,.14),transparent 65%),var(--bg-surface)}',
-      '.persona-lab-summary-banner.warning{border-color:rgba(234,179,8,.24);background:linear-gradient(135deg,rgba(234,179,8,.14),transparent 65%),var(--bg-surface)}',
+      '.persona-lab-summary-banner.success{border-color:rgba(34,197,94,.24);background:var(--color-success-bg)}',
+      '.persona-lab-summary-banner.warning{border-color:rgba(234,179,8,.24);background:var(--color-warning-bg)}',
       '.persona-lab-metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}',
       '.persona-lab-drawer-overlay{justify-content:flex-end;z-index:10000}',
-      '.persona-lab-drawer{width:min(760px,100%);height:100%;border-left:1px solid var(--glass-border);display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(129,140,248,.1),transparent 18%),var(--glass-bg-heavy)}',
+      '.persona-lab-drawer{width:min(760px,100%);height:100%;border-left:1px solid var(--glass-border);display:flex;flex-direction:column;background:var(--bg-app)}',
       '.persona-lab-drawer-header{padding:20px 22px 16px;border-bottom:1px solid var(--glass-border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
-      '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:-.02em}',
+      '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:0}',
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:22px}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row{grid-template-columns:1fr}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row{grid-template-columns:1fr}}',
       '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}}',
+      '.persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--border-radius-sm:4px;--border-radius-md:8px;--border-radius-lg:12px;--border-radius-pill:999px;--text-h1:24px;--text-h2:20px;--text-h3:16px;--text-body:14px;--text-small:12px;--text-xs:11px;--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--leading-tight:1.3;--leading-normal:1.6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--transition-fast:.15s ease;--transition-normal:.25s ease;--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2);background:var(--bg-app);font-size:var(--text-body);line-height:var(--leading-normal)}',
+      '@media (prefers-color-scheme: light){.persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}}',
+      'html[data-theme="light"] .persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}',
+      'html[data-theme="dark"] .persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2)}',
+      '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
+      '.persona-lab-nav{padding:var(--space-4);gap:var(--space-3);border-radius:0;border-width:0 1px 0 0;background:var(--glass-bg-heavy)}',
+      '.persona-lab-nav-title,.persona-lab-field label,.persona-lab-run-eyebrow,.persona-lab-chip-label,.persona-lab-kv-item span,.persona-lab-metric-card span,.persona-lab-run-metric span,.persona-lab-rule-item span,.persona-lab-model-trigger-provider,.persona-lab-model-provider-toggle{letter-spacing:0;font-size:var(--text-xs);font-weight:var(--weight-semibold)}',
+      '.persona-lab-nav-header strong{font-size:var(--text-h3);line-height:var(--leading-tight);font-weight:var(--weight-semibold)}',
+      '.persona-lab-nav-list{scrollbar-color:var(--scrollbar-thumb) transparent}',
+      '.persona-lab-nav-list::-webkit-scrollbar-thumb,.persona-lab-content::-webkit-scrollbar-thumb,.persona-lab-modal::-webkit-scrollbar-thumb,.persona-lab-drawer-body::-webkit-scrollbar-thumb,.persona-lab-model-menu::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border-radius:var(--border-radius-sm)}',
+      '.persona-lab-nav-item{border-radius:var(--border-radius-sm);padding:6px 8px;transition:border-color var(--transition-fast),background var(--transition-fast),color var(--transition-fast)}',
+      '.persona-lab-nav-item:hover{background:var(--bg-surface-hover);border-color:var(--accent-primary)}',
+      '.persona-lab-nav-item.active{border-color:var(--accent-primary);background:var(--accent-primary-ghost)}',
+      '.persona-lab-nav-group-summary{border-radius:var(--border-radius-sm);letter-spacing:0;font-weight:var(--weight-semibold)}',
+      '.persona-lab-nav-group-children{border-left-color:var(--border-default)}',
+      '.persona-lab-nav-folder-empty{border-radius:var(--border-radius-sm)}',
+      '.persona-lab-segmented{border-radius:var(--border-radius-md)}',
+      '.persona-lab-segmented button{border-radius:var(--border-radius-sm)}',
+      '.persona-lab-badge{padding:2px 8px;border-radius:var(--border-radius-pill);font-size:var(--text-xs);font-weight:var(--weight-medium);line-height:var(--leading-tight);background:var(--bg-surface);color:var(--text-secondary)}',
+      '.persona-lab-chip{padding:5px 10px;border-radius:var(--border-radius-pill);background:var(--bg-surface-subtle);border-color:var(--glass-border);font-size:var(--text-small);font-weight:var(--weight-medium)}',
+      '.persona-lab-shell{padding:var(--space-4);gap:var(--space-4)}',
+      '.persona-lab-toolbar{padding:var(--space-4);gap:var(--space-4);border-radius:var(--border-radius-lg);align-items:flex-start;animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-toolbar h1{margin:var(--space-1) 0 0;font-size:var(--text-h1);line-height:1.1;letter-spacing:0;font-weight:var(--weight-bold)}',
+      '.persona-lab-toolbar p{margin:var(--space-2) 0 0;color:var(--text-secondary);font-size:var(--text-body);line-height:var(--leading-normal)}',
+      '.persona-lab-actions{gap:var(--space-2)}',
+      '.persona-lab-button{border-radius:var(--border-radius-sm);padding:8px 12px;background:var(--bg-surface-subtle);font-size:var(--text-small);font-weight:var(--weight-medium);transition:border-color var(--transition-fast),background var(--transition-fast),color var(--transition-fast),opacity var(--transition-fast)}',
+      '.persona-lab-button.small{padding:6px 10px;border-radius:var(--border-radius-sm);font-size:var(--text-xs)}',
+      '.persona-lab-button:hover:not(:disabled){border-color:var(--accent-primary);background:var(--bg-surface-hover);transform:none}',
+      '.persona-lab-button.primary{background:var(--accent-primary);border-color:var(--accent-primary);color:#fff;box-shadow:none}',
+      '.persona-lab-button.primary:hover:not(:disabled){background:var(--accent-primary-hover);border-color:var(--accent-primary-hover)}',
+      '.persona-lab-button.danger{background:transparent;border-color:var(--glass-border);color:var(--color-error-text)}',
+      '.persona-lab-button.danger:hover:not(:disabled){border-color:var(--color-error);background:var(--color-error-bg)}',
+      '.persona-lab-panel{border-radius:var(--border-radius-lg);padding:var(--space-4);gap:var(--space-3);animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-panel.compact{gap:var(--space-3)}',
+      '.persona-lab-panel h2{font-size:var(--text-h2);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold)}',
+      '.persona-lab-panel h3{font-size:var(--text-h3);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold)}',
+      '.persona-lab-panel p,.persona-lab-helper,.persona-lab-run-note{font-size:var(--text-small);line-height:var(--leading-normal);color:var(--text-secondary)}',
+      '.persona-lab-status:not(:empty),.persona-lab-error:not(:empty){padding:var(--space-3);border-radius:var(--border-radius-md);font-size:var(--text-small)}',
+      '.persona-lab-input,.persona-lab-textarea,.persona-lab-select,.persona-lab-model-trigger{border-radius:10px;padding:10px 12px;background:var(--glass-bg-heavy);font-size:13px}',
+      '.persona-lab-textarea{line-height:var(--leading-normal)}',
+      '.persona-lab-textarea.json,.persona-lab-json,.persona-lab-skill-editor{font-size:var(--text-small)}',
+      '.persona-lab-model-menu{border-radius:var(--border-radius-lg);background:var(--bg-app);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight)}',
+      '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider,.persona-lab-model-provider-toggle{border-radius:var(--border-radius-md)}',
+      '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface-hover)}',
+      '.persona-lab-model-empty.active,.persona-lab-model-option.active,.persona-lab-step.active{background:var(--accent-primary-ghost)}',
+      '.persona-lab-rule-item,.persona-lab-tool-group,.persona-lab-variable-row,.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-empty,.persona-lab-run-card,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card,.persona-lab-summary-banner{border-radius:var(--border-radius-md)}',
+      '.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card{background:var(--bg-surface-subtle)}',
+      '.persona-lab-choice:hover,.persona-lab-tool-row:hover,.persona-lab-rule-item:hover,.persona-lab-rule-item.active{background:var(--bg-surface-hover);border-color:var(--accent-primary)}',
+      '.persona-lab-details-body{padding:var(--space-4);border-top-color:var(--glass-border)}',
+      '.persona-lab-skill>.persona-lab-details-summary,.persona-lab-run-card>.persona-lab-details-summary{padding:var(--space-3)}',
+      '.persona-lab-run-card{padding:var(--space-4);gap:var(--space-3);background:var(--glass-bg)}',
+      '.persona-lab-run-card-header strong{font-size:var(--text-h3);line-height:var(--leading-tight);font-weight:var(--weight-semibold)}',
+      '.persona-lab-kv{gap:var(--space-2)}',
+      '.persona-lab-kv-item,.persona-lab-run-metric,.persona-lab-metric-card{padding:var(--space-3)}',
+      '.persona-lab-kv-item strong,.persona-lab-run-metric strong,.persona-lab-metric-card strong{font-size:var(--text-h3);line-height:var(--leading-tight);font-weight:var(--weight-semibold)}',
+      '.persona-lab-json,.persona-lab-skill-preview{border-radius:var(--border-radius-md)}',
+      '.persona-lab-skill-editor-tools{border-radius:var(--border-radius-md)}',
+      '.persona-lab-variable-picker-menu{border-radius:var(--border-radius-md)}',
+      '.persona-lab-variable-token{border-radius:var(--border-radius-sm)}',
+      '.persona-lab-overlay,.persona-lab-drawer-overlay{background:rgba(0,0,0,.4);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}',
+      '.persona-lab-modal{border-radius:var(--border-radius-lg);background:var(--bg-app);box-shadow:var(--glass-shadow-elevated),var(--glass-inset-highlight)}',
+      '.persona-lab-modal-header,.persona-lab-modal-footer{padding:var(--space-4);border-color:var(--glass-border)}',
+      '.persona-lab-modal-body{padding:var(--space-4);gap:var(--space-4)}',
+      '.persona-lab-modal-header h2,.persona-lab-drawer-header h2{font-size:var(--text-h2);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold)}',
+      '.persona-lab-step{border-radius:var(--border-radius-md);padding:var(--space-3);letter-spacing:0;font-size:var(--text-xs);font-weight:var(--weight-semibold)}',
+      '.persona-lab-drawer{background:var(--bg-app);box-shadow:-8px 0 32px rgba(0,0,0,.3)}',
+      '.persona-lab-drawer-header{padding:var(--space-4);border-color:var(--glass-border)}',
+      '.persona-lab-drawer-body{padding:var(--space-4);gap:var(--space-4)}',
+      '@media (max-width:1100px){.persona-lab-nav{margin:var(--space-4) var(--space-4) 0;border-width:1px;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding:var(--space-4)}}',
+      '@media (max-width:820px){.persona-lab-toolbar{flex-direction:column}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:var(--space-4);padding-right:var(--space-4)}}',
     ].join('');
     document.head.appendChild(style);
   }
@@ -642,6 +803,135 @@
       source.metadataGroup || source.group || metadata.metadataGroup || metadata.group,
       source
     );
+  }
+
+  function personaIsArchived(persona) {
+    var source = ensureObject(persona);
+    return source.status === 'ARCHIVED' || Boolean(source.archivedAt);
+  }
+
+  function visiblePersonasForArchiveMode(state, personas) {
+    var archiveView = Boolean(state && state.showArchivedPersonas);
+    return ensureArray(personas).filter(function (persona) {
+      return personaIsArchived(persona) === archiveView;
+    });
+  }
+
+  function personaListContainsKey(personas, key) {
+    return Boolean(key) && ensureArray(personas).some(function (persona) {
+      return persona && persona.key === key;
+    });
+  }
+
+  function firstPersonaKey(personas) {
+    var first = ensureArray(personas)[0];
+    return first && first.key ? first.key : null;
+  }
+
+  function normalizePersonaFolderLabel(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function personaFolderGroupKey(value) {
+    return normalizePersonaFolderLabel(value).toLowerCase();
+  }
+
+  function isReservedPersonaFolderLabel(value) {
+    var key = personaFolderGroupKey(value);
+    return key === personaFolderGroupKey(SYSTEM_PERSONA_GROUP) ||
+      key === personaFolderGroupKey(UNGROUPED_PERSONA_GROUP);
+  }
+
+  function slugifyKey(value, fallback) {
+    var slug = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-{2,}/g, '-');
+    return (slug || fallback || 'item').slice(0, 80);
+  }
+
+  function personaFolderCategoryKey(label) {
+    var slug = slugifyKey(label, 'folder');
+    return (PERSONA_FOLDER_CATEGORY_KEY_PREFIX + slug).slice(0, 120);
+  }
+
+  function mergePersonaFolderLabels() {
+    var seen = {};
+    var labels = [];
+    Array.prototype.slice.call(arguments).forEach(function (source) {
+      ensureArray(source).forEach(function (value) {
+        var label = normalizePersonaFolderLabel(value);
+        if (!label) return;
+        var key = personaFolderGroupKey(label);
+        if (seen[key]) return;
+        seen[key] = true;
+        labels.push(label);
+      });
+    });
+    return labels.sort(function (left, right) {
+      if (left === SYSTEM_PERSONA_GROUP && right !== SYSTEM_PERSONA_GROUP) return -1;
+      if (right === SYSTEM_PERSONA_GROUP && left !== SYSTEM_PERSONA_GROUP) return 1;
+      if (left === UNGROUPED_PERSONA_GROUP && right !== UNGROUPED_PERSONA_GROUP) return 1;
+      if (right === UNGROUPED_PERSONA_GROUP && left !== UNGROUPED_PERSONA_GROUP) return -1;
+      return left.localeCompare(right);
+    });
+  }
+
+  function personaFolderLabelsFromAssetRegistry(assetRegistry) {
+    return ensureArray(assetRegistry && assetRegistry.categories)
+      .map(function (category) {
+        var metadata = ensureObject(category && category.metadata);
+        var key = String((category && category.key) || '');
+        var isPersonaFolder =
+          metadata.personaFolder === true ||
+          String(metadata.kind || '').toUpperCase() === 'PERSONA_FOLDER' ||
+          key.indexOf(PERSONA_FOLDER_CATEGORY_KEY_PREFIX) === 0;
+        if (!isPersonaFolder || category.status === 'ARCHIVED') return '';
+        return normalizePersonaFolderLabel(metadata.metadataGroup || category.label || key);
+      })
+      .filter(Boolean);
+  }
+
+  function personaFolderLabelsFromPersonas(personas) {
+    return ensureArray(personas).map(personaMetadataGroup).filter(Boolean);
+  }
+
+  function personaFolderLabels(state) {
+    return mergePersonaFolderLabels(
+      state.personaFolders,
+      personaFolderLabelsFromAssetRegistry(state.assetRegistry),
+      personaFolderLabelsFromPersonas(state.personas)
+    );
+  }
+
+  function personaFolderChoiceOptions(state, selectedValue) {
+    var labels = mergePersonaFolderLabels(
+      personaFolderLabels(state),
+      selectedValue ? [selectedValue] : []
+    );
+    var options = [{ key: '', label: UNGROUPED_PERSONA_GROUP }];
+    labels.forEach(function (label) {
+      if (label === UNGROUPED_PERSONA_GROUP) return;
+      options.push({ key: label, label: label });
+    });
+    return options;
+  }
+
+  function buildPersonaFolderSelect(state, selectedValue, onChange) {
+    var select = createEl('select', 'persona-lab-select');
+    personaFolderChoiceOptions(state, selectedValue).forEach(function (entry) {
+      var option = document.createElement('option');
+      option.value = entry.key;
+      option.textContent = entry.label;
+      if (entry.key === selectedValue) option.selected = true;
+      select.appendChild(option);
+    });
+    bindInput(select, function () {
+      onChange(select.value);
+    });
+    return select;
   }
 
   function normalizeSkillVariable(variable, index) {
@@ -1714,6 +2004,10 @@
       state.contentScrollTop = content.scrollTop || 0;
       state.contentScrollLeft = content.scrollLeft || 0;
     }
+    var navList = state.container.querySelector('.persona-lab-nav-list');
+    if (navList && !state.navScrollTargetKey && !state.navScrollTargetGroupKey) {
+      state.navScrollTop = navList.scrollTop || 0;
+    }
     var modal = state.container.querySelector('.persona-lab-modal');
     if (modal) {
       state.modalScrollTop = modal.scrollTop || 0;
@@ -1731,6 +2025,23 @@
       if (content) {
         content.scrollTop = state.contentScrollTop || 0;
         content.scrollLeft = state.contentScrollLeft || 0;
+      }
+      var navList = state.container.querySelector('.persona-lab-nav-list');
+      if (navList) {
+        navList.scrollTop = state.navScrollTop || 0;
+        var target = null;
+        if (state.navScrollTargetKey) {
+          target = navList.querySelector('[data-persona-key="' + cssEscape(state.navScrollTargetKey) + '"]');
+        }
+        if (!target && state.navScrollTargetGroupKey) {
+          target = navList.querySelector('[data-persona-group-key="' + cssEscape(state.navScrollTargetGroupKey) + '"]');
+        }
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ block: 'nearest' });
+          state.navScrollTop = navList.scrollTop || 0;
+        }
+        state.navScrollTargetKey = '';
+        state.navScrollTargetGroupKey = '';
       }
       var modal = state.container.querySelector('.persona-lab-modal');
       if (modal) {
@@ -2089,27 +2400,34 @@
 
   function isCurrentPersonaArchived(state) {
     var definition = currentPersonaDefinition(state);
-    return definition.status === 'ARCHIVED' || Boolean(definition.archivedAt);
+    return personaIsArchived(definition);
   }
 
   function applyBootstrapPayload(state, payload) {
     state.registries = payload && payload.registries ? payload.registries : state.registries;
     state.assetRegistry = payload && payload.assetRegistry ? payload.assetRegistry : state.assetRegistry;
+    state.personaFolders = mergePersonaFolderLabels(
+      state.personaFolders,
+      personaFolderLabelsFromAssetRegistry(state.assetRegistry)
+    );
     state.personas = mergePersonaAssetsIntoCatalog(
       ensureArray(payload && payload.personas),
       state.assetRegistry
     );
     state.bootstrapLoaded = true;
+    var visiblePersonas = visiblePersonasForArchiveMode(state, state.personas);
+    var previousSelectedKey = state.selectedPersonaKey;
     if (
       state.selectedPersonaKey &&
-      !state.personas.some(function (persona) {
-        return persona && persona.key === state.selectedPersonaKey;
-      })
+      !personaListContainsKey(visiblePersonas, state.selectedPersonaKey)
     ) {
-      state.selectedPersonaKey = state.personas.length > 0 ? state.personas[0].key : null;
+      state.selectedPersonaKey = firstPersonaKey(visiblePersonas);
     }
-    if (!state.selectedPersonaKey && state.personas.length > 0) {
-      state.selectedPersonaKey = state.personas[0].key;
+    if (!state.selectedPersonaKey && visiblePersonas.length > 0) {
+      state.selectedPersonaKey = firstPersonaKey(visiblePersonas);
+    }
+    if (state.selectedPersonaKey && state.selectedPersonaKey !== previousSelectedKey) {
+      state.navScrollTargetKey = state.selectedPersonaKey;
     }
   }
 
@@ -2165,6 +2483,10 @@
       query
     ).then(function (assetRegistry) {
       state.assetRegistry = assetRegistry || null;
+      state.personaFolders = mergePersonaFolderLabels(
+        state.personaFolders,
+        personaFolderLabelsFromAssetRegistry(state.assetRegistry)
+      );
       state.registries = Object.assign({}, ensureObject(state.registries), {
         assetRegistry: state.assetRegistry,
       });
@@ -2178,6 +2500,7 @@
     }
     state.loadingPersona = true;
     state.selectedPersonaKey = personaKey;
+    state.navScrollTargetKey = personaKey;
     state.skillEditorOpen = false;
     state.skillEditorIndex = -1;
     state.skillEditorDraft = '';
@@ -2235,11 +2558,12 @@
     )
       .then(function (payload) {
         applyBootstrapPayload(state, payload);
-        var nextKey = personaKey && state.personas.some(function (persona) {
-          return persona && persona.key === personaKey;
-        })
+        var visiblePersonas = visiblePersonasForArchiveMode(state, state.personas);
+        var nextKey = personaListContainsKey(visiblePersonas, personaKey)
           ? personaKey
-          : state.selectedPersonaKey;
+          : personaListContainsKey(visiblePersonas, state.selectedPersonaKey)
+            ? state.selectedPersonaKey
+            : firstPersonaKey(visiblePersonas);
         if (!nextKey) {
           state.current = null;
           state.form = null;
@@ -3023,11 +3347,12 @@
     )
       .then(function (payload) {
         applyBootstrapPayload(state, payload);
-        var nextKey = preferredPersonaKey && state.personas.some(function (persona) {
-          return persona && persona.key === preferredPersonaKey;
-        })
+        var visiblePersonas = visiblePersonasForArchiveMode(state, state.personas);
+        var nextKey = personaListContainsKey(visiblePersonas, preferredPersonaKey)
           ? preferredPersonaKey
-          : state.selectedPersonaKey;
+          : personaListContainsKey(visiblePersonas, state.selectedPersonaKey)
+            ? state.selectedPersonaKey
+            : firstPersonaKey(visiblePersonas);
         if (!nextKey) {
           clearSelectedPersona(state);
           renderState(state);
@@ -3058,69 +3383,96 @@
       return;
     }
     state.showArchivedPersonas = showArchived;
-    setStatus(state, showArchived ? 'Showing archived personas.' : 'Archived personas hidden.');
+    setStatus(state, showArchived ? 'Viewing archived personas.' : 'Viewing active personas.');
     clearSelectedPersona(state);
+    state.navScrollTop = 0;
     reloadPersonaList(state, state.selectedPersonaKey).catch(function () {});
   }
 
+  function openArchiveConfirmModal(state) {
+    if (!state.selectedPersonaKey || state.archivingPersona || state.deleteConfirmSubmitting) {
+      return;
+    }
+    var definition = currentPersonaDefinition(state);
+    if (definition.status === 'ARCHIVED' || definition.archivedAt) {
+      return;
+    }
+    state.archiveConfirmDraft = defaultArchiveConfirmDraft(definition.archiveReason || '');
+    state.archiveConfirmError = '';
+    state.archiveConfirmModalOpen = true;
+    renderState(state);
+  }
+
+  function closeArchiveConfirmModal(state) {
+    if (state.archiveConfirmSubmitting || state.archivingPersona) return;
+    state.archiveConfirmModalOpen = false;
+    state.archiveConfirmDraft = defaultArchiveConfirmDraft();
+    state.archiveConfirmError = '';
+    renderState(state);
+  }
+
   function archiveSelectedPersona(state) {
-    if (!state.selectedPersonaKey || state.archivingPersona) {
+    if (!state.selectedPersonaKey || state.archivingPersona || state.archiveConfirmSubmitting) {
       return Promise.resolve(null);
     }
     var definition = currentPersonaDefinition(state);
     var label = definition.displayName || state.selectedPersonaKey;
-    if (
-      state.dirty &&
-      !window.confirm('Archive ' + label + '? Unsaved changes will be discarded.')
-    ) {
+    var draft = ensureObject(state.archiveConfirmDraft);
+    if (!draft.confirmed) {
+      state.archiveConfirmError = 'Confirm the archive action before continuing.';
+      renderState(state);
       return Promise.resolve(null);
     }
-    if (!window.confirm('Archive ' + label + '? It will be hidden unless Show archived is enabled.')) {
-      return Promise.resolve(null);
-    }
-    var reason = window.prompt('Archive reason', definition.archiveReason || '') || '';
+    var reason = String(draft.reason || '').trim();
+    var archivedKey = state.selectedPersonaKey;
     state.archivingPersona = true;
+    state.archiveConfirmSubmitting = true;
+    state.archiveConfirmError = '';
     setStatus(state, 'Archiving ' + label + '...');
     renderState(state);
     return request(
       'POST',
-      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/archive',
+      '/admin/persona-studio/personas/' + encodeURIComponent(archivedKey) + '/archive',
       { reason: reason }
     )
       .then(function () {
-        setStatus(state, 'Archived ' + label + '.');
-        if (!state.showArchivedPersonas) {
-          state.selectedPersonaKey = null;
-        }
-        return reloadPersonaList(state, state.showArchivedPersonas ? state.selectedPersonaKey : null);
+        state.archiveConfirmModalOpen = false;
+        state.archiveConfirmDraft = defaultArchiveConfirmDraft();
+        setStatus(state, 'Archived ' + label + '. Use View archive to restore or delete it.');
+        state.selectedPersonaKey = null;
+        return reloadPersonaList(state, null);
       })
       .catch(function (error) {
-        setError(state, stringifyError(error));
+        state.archiveConfirmError = stringifyError(error);
+        setError(state, state.archiveConfirmError);
         renderState(state);
         throw error;
       })
       .finally(function () {
         state.archivingPersona = false;
+        state.archiveConfirmSubmitting = false;
         renderState(state);
       });
   }
 
   function unarchiveSelectedPersona(state) {
-    if (!state.selectedPersonaKey || state.archivingPersona) {
+    if (!state.selectedPersonaKey || state.archivingPersona || state.deleteConfirmSubmitting) {
       return Promise.resolve(null);
     }
     var definition = currentPersonaDefinition(state);
     var label = definition.displayName || state.selectedPersonaKey;
+    var restoredKey = state.selectedPersonaKey;
     state.archivingPersona = true;
     setStatus(state, 'Restoring ' + label + '...');
     renderState(state);
     return request(
       'POST',
-      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/unarchive'
+      '/admin/persona-studio/personas/' + encodeURIComponent(restoredKey) + '/unarchive'
     )
       .then(function () {
         setStatus(state, 'Restored ' + label + '.');
-        return reloadPersonaList(state, state.selectedPersonaKey);
+        state.selectedPersonaKey = null;
+        return reloadPersonaList(state, null);
       })
       .catch(function (error) {
         setError(state, stringifyError(error));
@@ -3133,27 +3485,281 @@
       });
   }
 
-  function createPersona(state) {
-    var key = window.prompt('New persona key', '');
-    if (!key) return;
-    var displayName = window.prompt('Display name', key);
-    if (!displayName) return;
-    var description = window.prompt('Description', displayName + ' persona draft created from Persona Studio.') || '';
-    var metadataGroup = window.prompt('Metadata group', '') || '';
+  function openDeleteConfirmModal(state) {
+    if (!state.selectedPersonaKey || state.deleteConfirmSubmitting || state.archivingPersona) {
+      return;
+    }
+    if (!isCurrentPersonaArchived(state)) {
+      setError(state, 'Only archived personas can be deleted.');
+      renderState(state);
+      return;
+    }
+    state.deleteConfirmDraft = defaultDeleteConfirmDraft();
+    state.deleteConfirmError = '';
+    state.deleteConfirmModalOpen = true;
+    renderState(state);
+  }
 
-    request('POST', '/admin/persona-studio/personas', {
+  function closeDeleteConfirmModal(state) {
+    if (state.deleteConfirmSubmitting) return;
+    state.deleteConfirmModalOpen = false;
+    state.deleteConfirmDraft = defaultDeleteConfirmDraft();
+    state.deleteConfirmError = '';
+    renderState(state);
+  }
+
+  function deleteArchivedPersona(state) {
+    if (!state.selectedPersonaKey || state.deleteConfirmSubmitting) {
+      return Promise.resolve(null);
+    }
+    if (!isCurrentPersonaArchived(state)) {
+      state.deleteConfirmError = 'Only archived personas can be deleted.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    var key = state.selectedPersonaKey;
+    var definition = currentPersonaDefinition(state);
+    var label = definition.displayName || key;
+    var confirmation = String(ensureObject(state.deleteConfirmDraft).confirmation || '').trim();
+    if (confirmation !== key) {
+      state.deleteConfirmError = 'Type the exact persona key to confirm deletion.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    state.deleteConfirmSubmitting = true;
+    state.deleteConfirmError = '';
+    setStatus(state, 'Deleting ' + label + '...');
+    renderState(state);
+    return request('DELETE', '/admin/persona-studio/personas/' + encodeURIComponent(key))
+      .then(function () {
+        state.deleteConfirmModalOpen = false;
+        state.deleteConfirmDraft = defaultDeleteConfirmDraft();
+        setStatus(state, 'Deleted ' + label + '.');
+        state.selectedPersonaKey = null;
+        clearSelectedPersona(state);
+        return reloadPersonaList(state, null);
+      })
+      .catch(function (error) {
+        state.deleteConfirmError = stringifyError(error);
+        setError(state, state.deleteConfirmError);
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.deleteConfirmSubmitting = false;
+        renderState(state);
+      });
+  }
+
+  function personaKeyExists(state, key) {
+    var normalized = String(key || '').trim().toLowerCase();
+    return ensureArray(state.personas).some(function (persona) {
+      return String((persona && persona.key) || '').trim().toLowerCase() === normalized;
+    });
+  }
+
+  function nextAvailablePersonaKey(state, value) {
+    var base = slugifyKey(value, 'new-persona');
+    var candidate = base;
+    var index = 2;
+    while (personaKeyExists(state, candidate)) {
+      var suffix = '-' + index;
+      candidate = base.slice(0, Math.max(1, 80 - suffix.length)) + suffix;
+      index += 1;
+    }
+    return candidate;
+  }
+
+  function openCreatePersonaModal(state, metadataGroup) {
+    var folder = normalizePersonaFolderLabel(metadataGroup);
+    if (folder === UNGROUPED_PERSONA_GROUP) {
+      folder = '';
+    }
+    state.createPersonaDraft = defaultCreatePersonaDraft(folder);
+    state.createPersonaKeyTouched = false;
+    state.createPersonaError = '';
+    state.createPersonaModalOpen = true;
+    renderState(state);
+  }
+
+  function closeCreatePersonaModal(state) {
+    if (state.createPersonaSubmitting) return;
+    state.createPersonaModalOpen = false;
+    state.createPersonaDraft = defaultCreatePersonaDraft('');
+    state.createPersonaKeyTouched = false;
+    state.createPersonaError = '';
+    renderState(state);
+  }
+
+  function submitCreatePersona(state) {
+    if (state.createPersonaSubmitting) {
+      return Promise.resolve(null);
+    }
+    var draft = ensureObject(state.createPersonaDraft);
+    var key = slugifyKey(draft.key || draft.displayName, '');
+    var displayName = String(draft.displayName || '').replace(/\s+/g, ' ').trim();
+    var description = String(draft.description || '').trim();
+    var metadataGroup = normalizePersonaFolderLabel(draft.metadataGroup);
+
+    if (!displayName) {
+      state.createPersonaError = 'Name is required.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (!key) {
+      state.createPersonaError = 'Key is required.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (personaKeyExists(state, key)) {
+      state.createPersonaError = 'A persona with that key already exists.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (displayName.length > 120) {
+      state.createPersonaError = 'Name must be 120 characters or fewer.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (description.length > 500) {
+      state.createPersonaError = 'Description must be 500 characters or fewer.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (
+      state.dirty &&
+      !window.confirm('Create ' + displayName + '? Unsaved changes on the current persona will be discarded when the new draft opens.')
+    ) {
+      return Promise.resolve(null);
+    }
+
+    state.createPersonaSubmitting = true;
+    state.createPersonaError = '';
+    setStatus(state, 'Creating persona draft...');
+    renderState(state);
+
+    return request('POST', '/admin/persona-studio/personas', {
       key: key,
       displayName: displayName,
       description: description,
-      metadataGroup: metadataGroup.trim(),
+      metadataGroup: metadataGroup,
       organizationId: state.organizationId || undefined,
     })
       .then(function (payload) {
-        setStatus(state, 'Created new persona draft.');
-        return refreshBootstrapAndPersona(state, payload.definition.key);
+        var nextKey = (payload && payload.definition && payload.definition.key) || key;
+        state.personaFolders = mergePersonaFolderLabels(state.personaFolders, [metadataGroup]);
+        state.navGroupExpansion[personaFolderGroupKey(metadataGroup || UNGROUPED_PERSONA_GROUP)] = true;
+        state.createPersonaModalOpen = false;
+        state.createPersonaDraft = defaultCreatePersonaDraft('');
+        state.createPersonaKeyTouched = false;
+        setStatus(state, 'Created ' + displayName + '.');
+        return refreshBootstrapAndPersona(state, nextKey);
       })
       .catch(function (error) {
-        setError(state, stringifyError(error));
+        state.createPersonaError = stringifyError(error);
+        setError(state, state.createPersonaError);
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.createPersonaSubmitting = false;
+        renderState(state);
+      });
+  }
+
+  function openCreateFolderModal(state) {
+    state.folderDraft = defaultPersonaFolderDraft();
+    state.folderCreateError = '';
+    state.folderCreateModalOpen = true;
+    renderState(state);
+  }
+
+  function closeCreateFolderModal(state) {
+    if (state.folderCreateSubmitting) return;
+    state.folderCreateModalOpen = false;
+    state.folderDraft = defaultPersonaFolderDraft();
+    state.folderCreateError = '';
+    renderState(state);
+  }
+
+  function submitCreateFolder(state) {
+    if (state.folderCreateSubmitting) {
+      return Promise.resolve(null);
+    }
+    var folderName = normalizePersonaFolderLabel(state.folderDraft && state.folderDraft.name);
+    var description = String((state.folderDraft && state.folderDraft.description) || '').trim();
+    if (!folderName) {
+      state.folderCreateError = 'Folder name is required.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (folderName.length > 120) {
+      state.folderCreateError = 'Folder name must be 120 characters or fewer.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    if (isReservedPersonaFolderLabel(folderName)) {
+      state.folderCreateError = folderName + ' is reserved by Persona Studio.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+    var exists = personaFolderLabels(state).some(function (label) {
+      return personaFolderGroupKey(label) === personaFolderGroupKey(folderName);
+    });
+    if (exists) {
+      state.folderCreateError = 'That folder already exists.';
+      renderState(state);
+      return Promise.resolve(null);
+    }
+
+    var authorOrganizationId = consultantOrganizationIdForCustomToolRegistration(state);
+    var createRequest = authorOrganizationId
+      ? request(
+          'POST',
+          '/organizations/' + encodeURIComponent(authorOrganizationId) + '/persona-studio/categories',
+          {
+            key: personaFolderCategoryKey(folderName),
+            label: folderName,
+            description: description || null,
+            metadata: {
+              kind: 'PERSONA_FOLDER',
+              personaFolder: true,
+              metadataGroup: folderName,
+            },
+          }
+        )
+      : Promise.resolve(null);
+
+    state.folderCreateSubmitting = true;
+    state.folderCreateError = '';
+    setStatus(state, authorOrganizationId ? 'Creating folder...' : 'Creating local folder...');
+    renderState(state);
+
+    return createRequest
+      .then(function () {
+        state.personaFolders = mergePersonaFolderLabels(state.personaFolders, [folderName]);
+        state.navGroupExpansion[personaFolderGroupKey(folderName)] = true;
+        state.navScrollTargetGroupKey = personaFolderGroupKey(folderName);
+        state.folderCreateModalOpen = false;
+        state.folderDraft = defaultPersonaFolderDraft();
+        setStatus(state, authorOrganizationId
+          ? 'Created folder ' + folderName + '.'
+          : 'Created local folder ' + folderName + '. Add a persona to persist the group.');
+        if (authorOrganizationId) {
+          return refreshAssetRegistry(state).catch(function () {
+            return null;
+          });
+        }
+        return null;
+      })
+      .catch(function (error) {
+        state.folderCreateError = stringifyError(error);
+        setError(state, state.folderCreateError);
+        renderState(state);
+        throw error;
+      })
+      .finally(function () {
+        state.folderCreateSubmitting = false;
         renderState(state);
       });
   }
@@ -3439,6 +4045,113 @@
     var text = String(value || '').trim();
     if (!text) return 'No content yet.';
     return text.length > 520 ? text.slice(0, 517) + '...' : text;
+  }
+
+  function skillVariableMergeToken(variable) {
+    var name = String(variable && variable.name ? variable.name : '').trim();
+    return name ? '{{' + name + '}}' : '';
+  }
+
+  function insertTextAtTextareaCursor(textarea, text) {
+    if (!textarea || !text) return;
+    var value = String(textarea.value || '');
+    var start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : value.length;
+    var end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : start;
+    var prefix = value.slice(0, start);
+    var suffix = value.slice(end);
+    var nextValue = prefix + text + suffix;
+    textarea.value = nextValue;
+    var nextCursor = start + text.length;
+    textarea.focus();
+    if (typeof textarea.setSelectionRange === 'function') {
+      textarea.setSelectionRange(nextCursor, nextCursor);
+    }
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function buildSkillVariableInsertTools(skill, editor) {
+    var variables = ensureArray(skill && skill.variables)
+      .map(function (variable, index) { return normalizeSkillVariable(variable, index); })
+      .filter(function (variable) { return Boolean(String(variable.name || '').trim()); });
+
+    var wrapper = createEl('div', 'persona-lab-skill-editor-tools');
+    wrapper.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        variables.length
+          ? 'Insert a merge token into the skill prompt. Runtime expansion replaces tokens such as {{account_name}} with the collected value.'
+          : 'Add variables to this skill, then insert merge tokens into the prompt from here.'
+      )
+    );
+
+    var picker = createEl('details', 'persona-lab-variable-picker');
+    var summary = createEl('summary', 'persona-lab-button');
+    summary.textContent = variables.length ? 'Insert variable' : 'No variables';
+    summary.title = variables.length
+      ? 'Find a skill variable and insert its merge token at the cursor.'
+      : 'Add a variable to this skill before inserting merge tokens.';
+    if (!variables.length) {
+      summary.setAttribute('aria-disabled', 'true');
+    }
+    picker.appendChild(summary);
+
+    if (variables.length) {
+      var menu = createEl('div', 'persona-lab-variable-picker-menu');
+      var search = createEl('input', 'persona-lab-input');
+      search.type = 'search';
+      search.placeholder = 'Find variable';
+      search.setAttribute('aria-label', 'Find skill variable');
+      var list = createEl('div', 'persona-lab-variable-picker-list');
+
+      function renderOptions() {
+        var query = String(search.value || '').trim().toLowerCase();
+        list.innerHTML = '';
+        var matches = variables.filter(function (variable) {
+          var haystack = [
+            variable.name,
+            variable.label,
+            variable.type,
+            variable.default == null ? '' : String(variable.default),
+          ].join(' ').toLowerCase();
+          return !query || haystack.indexOf(query) >= 0;
+        });
+        if (!matches.length) {
+          list.appendChild(createEl('div', 'persona-lab-empty', 'No matching variables.'));
+          return;
+        }
+        matches.forEach(function (variable) {
+          var token = skillVariableMergeToken(variable);
+          var button = createEl('button', 'persona-lab-variable-token');
+          button.type = 'button';
+          button.title = 'Insert ' + token;
+          button.appendChild(createEl('span', null, variable.label || variable.name));
+          button.appendChild(createEl('code', null, token));
+          button.addEventListener('click', function () {
+            insertTextAtTextareaCursor(editor, token);
+            picker.open = false;
+          });
+          list.appendChild(button);
+        });
+      }
+
+      search.addEventListener('input', renderOptions);
+      picker.addEventListener('toggle', function () {
+        if (!picker.open) return;
+        renderOptions();
+        setTimeout(function () {
+          search.focus();
+          search.select();
+        }, 0);
+      });
+      renderOptions();
+      menu.appendChild(search);
+      menu.appendChild(list);
+      picker.appendChild(menu);
+    }
+
+    wrapper.appendChild(picker);
+    return wrapper;
   }
 
   function ensureVariableRowId(state, variable) {
@@ -4225,20 +4938,25 @@
     return select;
   }
 
-  function buildPersonaNavGroups(personas) {
+  function buildPersonaNavGroups(personas, folderLabels) {
     var groups = {};
-    ensureArray(personas).forEach(function (persona) {
-      if (!persona) return;
-      var label = personaMetadataGroup(persona) || UNGROUPED_PERSONA_GROUP;
-      var key = label.toLowerCase();
+    function ensureGroup(label) {
+      var normalized = normalizePersonaFolderLabel(label) || UNGROUPED_PERSONA_GROUP;
+      var key = personaFolderGroupKey(normalized);
       if (!groups[key]) {
         groups[key] = {
           key: key,
-          label: label,
+          label: normalized,
           personas: [],
         };
       }
-      groups[key].personas.push(persona);
+      return groups[key];
+    }
+    ensureArray(folderLabels).forEach(ensureGroup);
+    ensureArray(personas).forEach(function (persona) {
+      if (!persona) return;
+      var label = personaMetadataGroup(persona) || UNGROUPED_PERSONA_GROUP;
+      ensureGroup(label).personas.push(persona);
     });
     return Object.keys(groups).map(function (key) {
       groups[key].personas.sort(function (left, right) {
@@ -4303,7 +5021,7 @@
   }
 
   function renderNavPersonaItem(state, persona) {
-    var archived = persona.status === 'ARCHIVED' || Boolean(persona.archivedAt);
+    var archived = personaIsArchived(persona);
     var item = createEl(
       'button',
       'persona-lab-nav-item' +
@@ -4311,6 +5029,7 @@
         (archived ? ' archived' : '')
     );
     item.type = 'button';
+    item.setAttribute('data-persona-key', String(persona.key || ''));
     item.addEventListener('click', function () {
       maybeSwitchPersona(state, persona.key);
     });
@@ -4340,44 +5059,72 @@
       copy.appendChild(createEl('span', 'persona-lab-badge', state.organizationName));
     }
     header.appendChild(copy);
-    var createButton = createEl('button', 'persona-lab-button', 'New');
+    var createButton = createEl('button', 'persona-lab-button small', 'New persona');
     createButton.type = 'button';
+    createButton.disabled = Boolean(state.showArchivedPersonas);
     createButton.addEventListener('click', function () {
-      createPersona(state);
+      openCreatePersonaModal(state, '');
     });
     header.appendChild(createButton);
     nav.appendChild(header);
 
     var controls = createEl('div', 'persona-lab-nav-controls');
-    var showArchivedToggle = createEl('label', 'persona-lab-toggle');
-    var showArchivedInput = document.createElement('input');
-    showArchivedInput.type = 'checkbox';
-    showArchivedInput.checked = Boolean(state.showArchivedPersonas);
-    showArchivedInput.addEventListener('change', function () {
-      toggleArchivedPersonas(state, showArchivedInput.checked);
+    var modeControl = createEl('div', 'persona-lab-segmented');
+    var activeModeButton = createEl(
+      'button',
+      state.showArchivedPersonas ? '' : 'active',
+      'Active'
+    );
+    activeModeButton.type = 'button';
+    activeModeButton.addEventListener('click', function () {
+      toggleArchivedPersonas(state, false);
     });
-    showArchivedToggle.appendChild(showArchivedInput);
-    showArchivedToggle.appendChild(createEl('span', null, 'Show archived'));
-    controls.appendChild(showArchivedToggle);
-    if (state.showArchivedPersonas) {
-      controls.appendChild(createEl('span', 'persona-lab-badge archived', 'archive visible'));
+    var archiveModeButton = createEl(
+      'button',
+      state.showArchivedPersonas ? 'active' : '',
+      'View archive'
+    );
+    archiveModeButton.type = 'button';
+    archiveModeButton.addEventListener('click', function () {
+      toggleArchivedPersonas(state, true);
+    });
+    modeControl.appendChild(activeModeButton);
+    modeControl.appendChild(archiveModeButton);
+    controls.appendChild(modeControl);
+
+    var folderButton = createEl('button', 'persona-lab-button small', 'New folder');
+    folderButton.type = 'button';
+    folderButton.addEventListener('click', function () {
+      openCreateFolderModal(state);
+    });
+    if (!state.showArchivedPersonas) {
+      controls.appendChild(folderButton);
+    } else {
+      controls.appendChild(createEl('span', 'persona-lab-badge archived', 'archive view'));
+      controls.appendChild(createEl('div', 'persona-lab-helper', 'Archived personas are hidden from active authoring.'));
     }
     nav.appendChild(controls);
 
     var list = createEl('div', 'persona-lab-nav-list');
-    if (!state.personas.length) {
+    var visiblePersonas = visiblePersonasForArchiveMode(state, state.personas);
+    var navGroups = buildPersonaNavGroups(
+      visiblePersonas,
+      state.showArchivedPersonas ? [] : personaFolderLabels(state)
+    );
+    if (!navGroups.length) {
       list.appendChild(
         createEl(
           'div',
           'persona-lab-empty',
           state.showArchivedPersonas
-            ? 'No persona drafts found yet.'
-            : 'No active persona drafts found. Turn on Show archived to include retired personas.'
+            ? 'No archived persona drafts found.'
+            : 'No active persona drafts found. View archive to inspect retired personas.'
         )
       );
     } else {
-      buildPersonaNavGroups(state.personas).forEach(function (group) {
+      navGroups.forEach(function (group) {
         var groupEl = createEl('details', 'persona-lab-nav-group');
+        groupEl.setAttribute('data-persona-group-key', group.key);
         groupEl.open = state.navGroupExpansion[group.key] !== false;
         var summary = createEl('summary', 'persona-lab-nav-group-summary');
         summary.appendChild(createEl('span', 'persona-lab-nav-group-caret', '>'));
@@ -4388,9 +5135,21 @@
           state.navGroupExpansion[group.key] = groupEl.open;
         });
         var groupList = createEl('div', 'persona-lab-nav-group-children');
-        group.personas.forEach(function (persona) {
-          groupList.appendChild(renderNavPersonaItem(state, persona));
-        });
+        if (group.personas.length) {
+          group.personas.forEach(function (persona) {
+            groupList.appendChild(renderNavPersonaItem(state, persona));
+          });
+        } else {
+          var emptyFolder = createEl('div', 'persona-lab-nav-folder-empty');
+          emptyFolder.appendChild(createEl('span', null, 'No personas in this folder yet.'));
+          var addPersonaButton = createEl('button', 'persona-lab-button small', 'Add persona');
+          addPersonaButton.type = 'button';
+          addPersonaButton.addEventListener('click', function () {
+            openCreatePersonaModal(state, group.label);
+          });
+          emptyFolder.appendChild(addPersonaButton);
+          groupList.appendChild(emptyFolder);
+        }
         groupEl.appendChild(groupList);
         list.appendChild(groupEl);
       });
@@ -5149,6 +5908,413 @@
     return overlay;
   }
 
+  function renderCreatePersonaModal(state) {
+    if (!state.createPersonaModalOpen) {
+      return null;
+    }
+    var draft = ensureObject(state.createPersonaDraft);
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeCreatePersonaModal(state);
+      }
+    });
+
+    var modal = createEl('form', 'persona-lab-modal');
+    modal.addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitCreatePersona(state).catch(function () {});
+    });
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('h2', null, 'New Persona'));
+    copy.appendChild(createEl('p', null, 'Create a draft persona and place it in a sidebar folder.'));
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.disabled = Boolean(state.createPersonaSubmitting);
+    closeButton.addEventListener('click', function () {
+      closeCreatePersonaModal(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.createPersonaError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.createPersonaError));
+    }
+
+    var grid = createEl('div', 'persona-lab-grid');
+    var displayNameInput = createEl('input', 'persona-lab-input');
+    displayNameInput.value = String(draft.displayName || '');
+    displayNameInput.placeholder = 'Research Coordinator';
+    var keyInput = createEl('input', 'persona-lab-input');
+    keyInput.value = String(draft.key || '');
+    keyInput.placeholder = 'research-coordinator';
+    displayNameInput.addEventListener('input', function () {
+      state.createPersonaDraft.displayName = displayNameInput.value;
+      if (!state.createPersonaKeyTouched) {
+        state.createPersonaDraft.key = nextAvailablePersonaKey(state, displayNameInput.value);
+        keyInput.value = state.createPersonaDraft.key;
+      }
+    });
+    keyInput.addEventListener('input', function () {
+      state.createPersonaKeyTouched = true;
+      state.createPersonaDraft.key = slugifyKey(keyInput.value, '');
+      keyInput.value = state.createPersonaDraft.key;
+    });
+    renderFieldGroup(grid, 'Name', displayNameInput, 'The human-readable persona name.');
+    renderFieldGroup(grid, 'Key', keyInput, 'Stable identifier used in URLs and API calls.');
+
+    var folderSelect = buildPersonaFolderSelect(
+      state,
+      String(draft.metadataGroup || ''),
+      function (value) {
+        state.createPersonaDraft.metadataGroup = normalizePersonaFolderLabel(value);
+      }
+    );
+    renderFieldGroup(grid, 'Folder', folderSelect, 'Sidebar folder used to organize this persona.');
+    body.appendChild(grid);
+
+    var descriptionInput = createEl('textarea', 'persona-lab-textarea');
+    descriptionInput.value = String(draft.description || '');
+    descriptionInput.placeholder = 'Short summary for catalogs and handoffs.';
+    bindInput(descriptionInput, function () {
+      state.createPersonaDraft.description = descriptionInput.value;
+    });
+    renderFieldGroup(body, 'Description', descriptionInput, 'Short summary used in catalogs and handoffs.');
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        state.createPersonaSubmitting ? 'Creating draft...' : 'The new draft opens automatically after creation.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    var cancelButton = createEl('button', 'persona-lab-button', 'Cancel');
+    cancelButton.type = 'button';
+    cancelButton.disabled = Boolean(state.createPersonaSubmitting);
+    cancelButton.addEventListener('click', function () {
+      closeCreatePersonaModal(state);
+    });
+    var submitButton = createEl(
+      'button',
+      'persona-lab-button primary',
+      state.createPersonaSubmitting ? 'Creating...' : 'Create Persona'
+    );
+    submitButton.type = 'submit';
+    submitButton.disabled = Boolean(state.createPersonaSubmitting);
+    actions.appendChild(cancelButton);
+    actions.appendChild(submitButton);
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    setTimeout(function () {
+      displayNameInput.focus();
+    }, 0);
+    return overlay;
+  }
+
+  function renderCreateFolderModal(state) {
+    if (!state.folderCreateModalOpen) {
+      return null;
+    }
+    var draft = ensureObject(state.folderDraft);
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeCreateFolderModal(state);
+      }
+    });
+
+    var modal = createEl('form', 'persona-lab-modal');
+    modal.addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitCreateFolder(state).catch(function () {});
+    });
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('h2', null, 'New Folder'));
+    copy.appendChild(createEl('p', null, 'Create a sidebar group for organizing persona drafts.'));
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.disabled = Boolean(state.folderCreateSubmitting);
+    closeButton.addEventListener('click', function () {
+      closeCreateFolderModal(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.folderCreateError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.folderCreateError));
+    }
+    var nameInput = createEl('input', 'persona-lab-input');
+    nameInput.value = String(draft.name || '');
+    nameInput.placeholder = 'Client Success';
+    bindInput(nameInput, function () {
+      state.folderDraft.name = nameInput.value;
+    });
+    renderFieldGroup(body, 'Folder name', nameInput, 'Sidebar group name used by persona metadata.');
+
+    var descriptionInput = createEl('textarea', 'persona-lab-textarea');
+    descriptionInput.value = String(draft.description || '');
+    descriptionInput.placeholder = 'Optional note for this folder.';
+    bindInput(descriptionInput, function () {
+      state.folderDraft.description = descriptionInput.value;
+    });
+    renderFieldGroup(body, 'Description', descriptionInput, 'Optional note saved with the folder record when an author organization is available.');
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        state.folderCreateSubmitting ? 'Creating folder...' : 'Personas added to this folder inherit the same metadata group.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    var cancelButton = createEl('button', 'persona-lab-button', 'Cancel');
+    cancelButton.type = 'button';
+    cancelButton.disabled = Boolean(state.folderCreateSubmitting);
+    cancelButton.addEventListener('click', function () {
+      closeCreateFolderModal(state);
+    });
+    var submitButton = createEl(
+      'button',
+      'persona-lab-button primary',
+      state.folderCreateSubmitting ? 'Creating...' : 'Create Folder'
+    );
+    submitButton.type = 'submit';
+    submitButton.disabled = Boolean(state.folderCreateSubmitting);
+    actions.appendChild(cancelButton);
+    actions.appendChild(submitButton);
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    setTimeout(function () {
+      nameInput.focus();
+    }, 0);
+    return overlay;
+  }
+
+  function renderArchiveConfirmModal(state) {
+    if (!state.archiveConfirmModalOpen) {
+      return null;
+    }
+    var definition = currentPersonaDefinition(state);
+    var personaKey = state.selectedPersonaKey || '';
+    var label = definition.displayName || personaKey;
+    var draft = ensureObject(state.archiveConfirmDraft);
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeArchiveConfirmModal(state);
+      }
+    });
+
+    var modal = createEl('form', 'persona-lab-modal');
+    modal.addEventListener('submit', function (event) {
+      event.preventDefault();
+      archiveSelectedPersona(state).catch(function () {});
+    });
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('h2', null, 'Archive Persona'));
+    copy.appendChild(createEl('p', null, 'Move this persona out of active authoring while keeping it restorable from the archive.'));
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.disabled = Boolean(state.archiveConfirmSubmitting || state.archivingPersona);
+    closeButton.addEventListener('click', function () {
+      closeArchiveConfirmModal(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.archiveConfirmError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.archiveConfirmError));
+    }
+    var warning = createEl('div', 'persona-lab-confirmation-card');
+    warning.appendChild(createEl('strong', null, label));
+    warning.appendChild(
+      createEl(
+        'p',
+        null,
+        state.dirty
+          ? 'Unsaved edits on this persona will be discarded when it is archived.'
+          : 'Archived personas leave the active list and move to View archive.'
+      )
+    );
+    body.appendChild(warning);
+
+    var reasonInput = createEl('textarea', 'persona-lab-textarea');
+    reasonInput.value = String(draft.reason || '');
+    reasonInput.placeholder = 'Optional archive reason.';
+    bindInput(reasonInput, function () {
+      state.archiveConfirmDraft.reason = reasonInput.value;
+    });
+    renderFieldGroup(body, 'Archive reason', reasonInput, 'Optional note stored with the archived persona.');
+
+    var confirmLabel = createEl('label', 'persona-lab-toggle');
+    var confirmInput = document.createElement('input');
+    confirmInput.type = 'checkbox';
+    confirmInput.checked = Boolean(draft.confirmed);
+    confirmInput.addEventListener('change', function () {
+      state.archiveConfirmDraft.confirmed = confirmInput.checked;
+      renderState(state);
+    });
+    confirmLabel.appendChild(confirmInput);
+    confirmLabel.appendChild(createEl('span', null, 'I understand this persona will leave Active view.'));
+    body.appendChild(confirmLabel);
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        state.archiveConfirmSubmitting ? 'Archiving persona...' : 'You can restore archived personas from View archive.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    var cancelButton = createEl('button', 'persona-lab-button', 'Cancel');
+    cancelButton.type = 'button';
+    cancelButton.disabled = Boolean(state.archiveConfirmSubmitting || state.archivingPersona);
+    cancelButton.addEventListener('click', function () {
+      closeArchiveConfirmModal(state);
+    });
+    var submitButton = createEl(
+      'button',
+      'persona-lab-button danger',
+      state.archiveConfirmSubmitting ? 'Archiving...' : 'Archive Persona'
+    );
+    submitButton.type = 'submit';
+    submitButton.disabled = Boolean(state.archiveConfirmSubmitting || state.archivingPersona || !draft.confirmed);
+    actions.appendChild(cancelButton);
+    actions.appendChild(submitButton);
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    setTimeout(function () {
+      reasonInput.focus();
+    }, 0);
+    return overlay;
+  }
+
+  function renderDeleteConfirmModal(state) {
+    if (!state.deleteConfirmModalOpen) {
+      return null;
+    }
+    var definition = currentPersonaDefinition(state);
+    var personaKey = state.selectedPersonaKey || '';
+    var label = definition.displayName || personaKey;
+    var draft = ensureObject(state.deleteConfirmDraft);
+    var typedKey = String(draft.confirmation || '').trim();
+    var canDelete = typedKey === personaKey;
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) {
+        closeDeleteConfirmModal(state);
+      }
+    });
+
+    var modal = createEl('form', 'persona-lab-modal');
+    modal.addEventListener('submit', function (event) {
+      event.preventDefault();
+      deleteArchivedPersona(state).catch(function () {});
+    });
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    copy.appendChild(createEl('h2', null, 'Delete Archived Persona'));
+    copy.appendChild(createEl('p', null, 'Permanently remove an archived persona from Persona Studio.'));
+    header.appendChild(copy);
+    var closeButton = createEl('button', 'persona-lab-button', 'Close');
+    closeButton.type = 'button';
+    closeButton.disabled = Boolean(state.deleteConfirmSubmitting);
+    closeButton.addEventListener('click', function () {
+      closeDeleteConfirmModal(state);
+    });
+    header.appendChild(closeButton);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.deleteConfirmError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.deleteConfirmError));
+    }
+    var warning = createEl('div', 'persona-lab-confirmation-card danger');
+    warning.appendChild(createEl('strong', null, label));
+    warning.appendChild(
+      createEl(
+        'p',
+        null,
+        'This is permanent. Delete is only available from View archive and cannot be undone from Persona Studio.'
+      )
+    );
+    warning.appendChild(createEl('code', null, personaKey));
+    body.appendChild(warning);
+
+    var confirmationInput = createEl('input', 'persona-lab-input');
+    confirmationInput.value = typedKey;
+    confirmationInput.placeholder = personaKey;
+    confirmationInput.addEventListener('input', function () {
+      state.deleteConfirmDraft.confirmation = confirmationInput.value;
+      renderState(state);
+    });
+    renderFieldGroup(body, 'Type persona key', confirmationInput, 'Required secondary confirmation before permanent deletion.');
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    footer.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        state.deleteConfirmSubmitting ? 'Deleting persona...' : 'The delete button unlocks after the exact key is typed.'
+      )
+    );
+    var actions = createEl('div', 'persona-lab-actions');
+    var cancelButton = createEl('button', 'persona-lab-button', 'Cancel');
+    cancelButton.type = 'button';
+    cancelButton.disabled = Boolean(state.deleteConfirmSubmitting);
+    cancelButton.addEventListener('click', function () {
+      closeDeleteConfirmModal(state);
+    });
+    var submitButton = createEl(
+      'button',
+      'persona-lab-button danger',
+      state.deleteConfirmSubmitting ? 'Deleting...' : 'Delete Permanently'
+    );
+    submitButton.type = 'submit';
+    submitButton.disabled = Boolean(state.deleteConfirmSubmitting || !canDelete);
+    actions.appendChild(cancelButton);
+    actions.appendChild(submitButton);
+    footer.appendChild(actions);
+    modal.appendChild(footer);
+
+    setTimeout(function () {
+      confirmationInput.focus();
+    }, 0);
+    return overlay;
+  }
+
   function renderCustomSkillEditorModal(state) {
     if (!state.skillEditorOpen) {
       return null;
@@ -5200,6 +6366,7 @@
       bindInput(editor, function () {
         state.skillEditorDraft = editor.value;
       });
+      body.appendChild(buildSkillVariableInsertTools(skill, editor));
       renderFieldGroup(body, 'Content', editor);
 	    } else {
 	      body.appendChild(createEl('div', 'persona-lab-empty', 'This skill is no longer available.'));
@@ -5370,7 +6537,13 @@
     var personaArchived = isCurrentPersonaArchived(state);
     var saveButton = createEl('button', 'persona-lab-button', state.saving ? 'Saving…' : 'Save');
     saveButton.type = 'button';
-    saveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch || state.archivingPersona;
+    saveButton.disabled =
+      !state.form ||
+      state.saving ||
+      state.testing ||
+      state.launchingBatch ||
+      state.archivingPersona ||
+      state.deleteConfirmSubmitting;
     saveButton.addEventListener('click', function () {
       savePersona(state).catch(function () {});
     });
@@ -5382,9 +6555,37 @@
         : personaArchived ? 'Unarchive' : 'Archive'
     );
     archiveButton.type = 'button';
-    archiveButton.disabled = !state.form || state.saving || state.testing || state.launchingBatch || state.archivingPersona;
+    archiveButton.disabled =
+      !state.form ||
+      state.saving ||
+      state.testing ||
+      state.launchingBatch ||
+      state.archivingPersona ||
+      state.deleteConfirmSubmitting;
     archiveButton.addEventListener('click', function () {
-      (personaArchived ? unarchiveSelectedPersona(state) : archiveSelectedPersona(state)).catch(function () {});
+      if (personaArchived) {
+        unarchiveSelectedPersona(state).catch(function () {});
+      } else {
+        openArchiveConfirmModal(state);
+      }
+    });
+    var deleteButton = createEl(
+      'button',
+      'persona-lab-button danger',
+      state.deleteConfirmSubmitting ? 'Deleting…' : 'Delete'
+    );
+    deleteButton.type = 'button';
+    deleteButton.disabled =
+      !state.form ||
+      !personaArchived ||
+      !state.showArchivedPersonas ||
+      state.saving ||
+      state.testing ||
+      state.launchingBatch ||
+      state.archivingPersona ||
+      state.deleteConfirmSubmitting;
+    deleteButton.addEventListener('click', function () {
+      openDeleteConfirmModal(state);
     });
     var singleRunButton = createEl(
       'button',
@@ -5393,7 +6594,13 @@
     );
     singleRunButton.type = 'button';
     singleRunButton.disabled =
-      !state.form || personaArchived || state.testing || state.loadingPersona || state.launchingBatch || state.archivingPersona;
+      !state.form ||
+      personaArchived ||
+      state.testing ||
+      state.loadingPersona ||
+      state.launchingBatch ||
+      state.archivingPersona ||
+      state.deleteConfirmSubmitting;
     singleRunButton.addEventListener('click', function () {
       testPersona(state).catch(function () {});
     });
@@ -5404,12 +6611,21 @@
     );
     batchButton.type = 'button';
     batchButton.disabled =
-      !state.form || personaArchived || state.testing || state.loadingPersona || state.launchingBatch || state.archivingPersona;
+      !state.form ||
+      personaArchived ||
+      state.testing ||
+      state.loadingPersona ||
+      state.launchingBatch ||
+      state.archivingPersona ||
+      state.deleteConfirmSubmitting;
     batchButton.addEventListener('click', function () {
       openBatchWizard(state);
     });
     actions.appendChild(saveButton);
     actions.appendChild(archiveButton);
+    if (personaArchived && state.showArchivedPersonas) {
+      actions.appendChild(deleteButton);
+    }
     actions.appendChild(singleRunButton);
     actions.appendChild(batchButton);
     toolbar.appendChild(actions);
@@ -5947,6 +7163,22 @@
     var wizard = renderBatchWizard(state);
     if (wizard) {
       state.container.appendChild(wizard);
+    }
+    var createPersonaModal = renderCreatePersonaModal(state);
+    if (createPersonaModal) {
+      state.container.appendChild(createPersonaModal);
+    }
+    var createFolderModal = renderCreateFolderModal(state);
+    if (createFolderModal) {
+      state.container.appendChild(createFolderModal);
+    }
+    var archiveConfirmModal = renderArchiveConfirmModal(state);
+    if (archiveConfirmModal) {
+      state.container.appendChild(archiveConfirmModal);
+    }
+    var deleteConfirmModal = renderDeleteConfirmModal(state);
+    if (deleteConfirmModal) {
+      state.container.appendChild(deleteConfirmModal);
     }
     var skillEditor = renderCustomSkillEditorModal(state);
     if (skillEditor) {
