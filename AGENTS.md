@@ -19,3 +19,17 @@ The Ludflow document should be linked to the relevant DecidR project or decision
 Plan documents should capture the intent, scope, affected systems, important decisions, implementation steps, validation approach, and current status. If the work changes direction, update the same document rather than letting the decision graph drift.
 
 When the planned work is complete, update the Ludflow document with a new version that records what was implemented, final decisions, validation results, and any follow-up work. Mark or publish the document as implemented and published so the Tribe-X DecidR project or decision reflects the completed state.
+
+## Release And Registry Maintenance
+
+`bash build.sh` is the canonical release-package command. It reads `manifest.json.version`, rewrites `manifest.json.download_url` to `https://github.com/deejanus/tribe-x-ai-plugin/releases/download/{version}/tribe-x-ai-plugin.zip`, and produces `release/tribe-x-ai-plugin.zip` containing `manifest.json`, `renderers/`, and `tools/`.
+
+When preparing a version update:
+
+1. Bump `manifest.json.version`.
+2. Add concise user-facing notes under `RELEASE_NOTES.md` `# Unreleased`.
+3. Run `bash build.sh` so `download_url` is synchronized and a release package exists.
+4. Validate renderer/tool syntax before publishing.
+5. Keep `../mcpviews/registry/registry.json` pointed at the repository `manifest_url`; avoid copying every new version into the registry unless registry metadata itself changes.
+
+Release candidates should use SemVer prerelease suffixes such as `0.1.17-rc.1`. The GitHub Actions release workflow treats versions containing `-` as prereleases and clears `RELEASE_NOTES.md` after publishing. Keep `docs/release-strategy.md` aligned when changing the release process.

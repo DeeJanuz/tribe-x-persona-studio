@@ -27,3 +27,16 @@ This repository will hold the plugin-owned implementation for the Tribe-X AI exp
 - [Architecture Decisions](./docs/architecture-decisions.md)
 - [Enhancement Log](./docs/enhancements.md)
 - [Test Index](./docs/test-index.md)
+- [Release Strategy](./docs/release-strategy.md)
+
+## Build
+
+```bash
+bash build.sh
+```
+
+The build reads `manifest.json.version`, synchronizes `manifest.json.download_url`, and writes `release/tribe-x-ai-plugin.zip` for MCPViews registry installation.
+
+## Release Notes
+
+Keep `RELEASE_NOTES.md` current under `# Unreleased` whenever a change should appear in the GitHub release body or MCPViews update changelog. Bumping `manifest.json.version` on `master` triggers the release workflow; prerelease versions such as `0.1.17-rc.1` publish as GitHub prereleases.

@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest JSON
+        run: python3 -m json.tool manifest.json >/dev/null
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check renderers/persona-lab.js
+          node --check tools/relay-probe-server.mjs
+          node --check tools/relay-probe-executors.mjs
+
+      - name: Build release package
+        run: bash build.sh

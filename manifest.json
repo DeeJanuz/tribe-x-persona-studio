@@ -1,6 +1,7 @@
 {
   "name": "tribe-x-ai-plugin",
-  "version": "0.1.16",
+  "version": "0.1.17-rc.1",
+  "download_url": "https://github.com/deejanus/tribe-x-ai-plugin/releases/download/0.1.17-rc.1/tribe-x-ai-plugin.zip",
   "renderers": {
     "relay-probe": "rich_content"
   },

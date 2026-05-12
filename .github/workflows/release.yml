@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths: [manifest.json]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: version
+        run: |
+          CURRENT=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          PREVIOUS=$(git show HEAD~1:manifest.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$CURRENT" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build plugin
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          python3 -m json.tool manifest.json >/dev/null
+          node --check renderers/persona-lab.js
+          node --check tools/relay-probe-server.mjs
+          node --check tools/relay-probe-executors.mjs
+          bash build.sh
+
+      - name: Create release
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.current }}"
+          NOTES=$(sed '1{/^# Unreleased$/d;}' RELEASE_NOTES.md | sed '/^$/d')
+          RELEASE_ARGS=(gh release create "$VERSION" release/tribe-x-ai-plugin.zip --title "$VERSION")
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+            RELEASE_ARGS+=(--prerelease)
+          fi
+          if [ -n "$NOTES" ]; then
+            RELEASE_ARGS+=(--notes "$NOTES")
+          else
+            RELEASE_ARGS+=(--generate-notes)
+          fi
+          "${RELEASE_ARGS[@]}"
+
+      - name: Clear release notes
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          echo "# Unreleased" > RELEASE_NOTES.md
+          if git diff --quiet -- RELEASE_NOTES.md; then
+            echo "Release notes already clear."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_NOTES.md
+          git commit -m "chore: clear release notes after ${{ steps.version.outputs.current }}"
+          git push

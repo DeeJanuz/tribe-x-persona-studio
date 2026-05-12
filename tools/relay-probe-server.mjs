@@ -5,7 +5,7 @@ import http from "node:http";
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 4877);
 const SERVER_NAME = "tribe-x-ai-plugin-relay-probe";
-const SERVER_VERSION = "0.1.12";
+const SERVER_VERSION = "0.1.17-rc.1";
 const TOOL_NAME = "relay-probe";
 const PREFIXED_TOOL_NAME = "tribe-x-ai-plugin__relay-probe";
 

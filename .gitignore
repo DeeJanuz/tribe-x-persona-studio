@@ -2,6 +2,8 @@
 node_modules/
 
 # Build
+.build/
+release/
 dist/
 .next/
 out/
