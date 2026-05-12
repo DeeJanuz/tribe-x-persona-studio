@@ -5,13 +5,16 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-09-skill-variable-insert-v1';
+  var RENDERER_VERSION = '2026-05-12-skill-variable-scroll-anchor-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
   var SYSTEM_PERSONA_GROUP = 'System';
   var UNGROUPED_PERSONA_GROUP = 'Ungrouped';
   var PERSONA_FOLDER_CATEGORY_KEY_PREFIX = 'persona-folder-';
+  var CUSTOM_SKILL_DEFAULT_TITLE = 'New custom skill';
+  var CUSTOM_SKILL_DEFAULT_SUMMARY = 'Describe what this skill adds.';
+  var CUSTOM_SKILL_DEFAULT_CONTENT = 'Add markdown instructions here.';
   var FALLBACK_PERSONA_STUDIO_MODELS = [
     'google/gemini-3-flash-preview',
     'openai/gpt-5-mini',
@@ -181,6 +184,8 @@
         navScrollTop: 0,
         navScrollTargetKey: '',
         navScrollTargetGroupKey: '',
+        contentScrollAnchorKey: '',
+        contentScrollAnchorTop: 0,
         modalScrollTop: 0,
         drawerScrollTop: 0,
         chromeKey: '',
@@ -339,7 +344,7 @@
       '.persona-lab-button:disabled{cursor:not-allowed;opacity:.72;transform:none;background:var(--bg-surface-subtle);color:var(--text-tertiary)}',
       '.persona-lab-button.primary:disabled{box-shadow:none}',
       '.persona-lab-status-stack{display:flex;flex-direction:column;gap:10px;max-width:920px}',
-      '.persona-lab-status,.persona-lab-error{font-size:13px;line-height:1.5;min-height:0;padding:0}',
+      '.persona-lab-status,.persona-lab-error{font-size:13px;line-height:1.5;min-height:0;padding:0;white-space:pre-wrap}',
       '.persona-lab-status:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-info-bg);border:1px solid rgba(59,130,246,.18);color:var(--color-info-text)}',
       '.persona-lab-error:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-error-bg);border:1px solid rgba(239,68,68,.2);color:var(--color-error-text)}',
       '.persona-lab-content{overflow:auto;padding:2px 0 16px 0;display:flex;flex-direction:column;gap:18px;min-height:0}',
@@ -443,18 +448,24 @@
       '.persona-lab-skill.persona-lab-details{padding:0}',
       '.persona-lab-skill>.persona-lab-details-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:14px}',
       '.persona-lab-skill>.persona-lab-details-summary strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.persona-lab-skill-summary-copy{min-width:0;display:flex;flex-direction:column;gap:3px}',
+      '.persona-lab-skill-summary-copy strong{display:block;font-size:15px;line-height:1.25}',
+      '.persona-lab-skill-summary-meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-tertiary);font-size:12px;line-height:1.25}',
       '.persona-lab-skill-header{display:flex;align-items:center;justify-content:space-between;gap:12px}',
       '.persona-lab-skill-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+      '.persona-lab-skill-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}',
+      '.persona-lab-skill-prompt-panel{display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
       '.persona-lab-skill-preview{margin:0;max-height:132px;overflow:auto;white-space:pre-wrap;word-break:break-word;border:1px solid var(--glass-border);border-radius:14px;padding:12px;background:rgba(15,23,42,.38);color:var(--text-secondary);font-size:12px;line-height:1.5}',
       'html[data-theme="light"] .persona-lab-skill-preview,.persona-lab-root[data-theme="light"] .persona-lab-skill-preview{background:rgba(255,255,255,.58)}',
       '.persona-lab-skill-editor-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
       '.persona-lab-skill-editor-tools .persona-lab-helper{max-width:520px}',
-      '.persona-lab-variable-picker{position:relative;z-index:5}',
+      '.persona-lab-variable-picker{position:relative;z-index:20}',
+      '.persona-lab-variable-picker[open]{z-index:10020}',
       '.persona-lab-variable-picker>summary{list-style:none}',
       '.persona-lab-variable-picker>summary::-webkit-details-marker{display:none}',
-      '.persona-lab-variable-picker-menu{position:absolute;right:0;top:calc(100% + 8px);width:min(360px,72vw);display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface);box-shadow:var(--glass-shadow-elevated);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur))}',
+      '.persona-lab-variable-picker-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:10021;width:min(360px,72vw);display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-app);box-shadow:0 18px 48px rgba(0,0,0,.55),var(--glass-inset-highlight)}',
       '.persona-lab-variable-picker-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}',
-      '.persona-lab-variable-token{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:10px;padding:8px 10px;background:var(--bg-surface-subtle);color:var(--text-primary);cursor:pointer;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}',
+      '.persona-lab-variable-token{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:10px;padding:8px 10px;background:var(--bg-surface-hover);color:var(--text-primary);cursor:pointer;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}',
       '.persona-lab-variable-token:hover{border-color:var(--accent-primary);background:var(--accent-primary-ghost)}',
       '.persona-lab-variable-token code{font-size:12px;color:var(--color-info-text);white-space:nowrap}',
       '.persona-lab-skill-editor{min-height:min(52vh,520px);font-family:var(--font-mono);font-size:12px}',
@@ -512,7 +523,7 @@
       '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:0}',
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row{grid-template-columns:1fr}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row,.persona-lab-skill-meta-grid{grid-template-columns:1fr}}',
       '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}}',
       '.persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--border-radius-sm:4px;--border-radius-md:8px;--border-radius-lg:12px;--border-radius-pill:999px;--text-h1:24px;--text-h2:20px;--text-h3:16px;--text-body:14px;--text-small:12px;--text-xs:11px;--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--leading-tight:1.3;--leading-normal:1.6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--transition-fast:.15s ease;--transition-normal:.25s ease;--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2);background:var(--bg-app);font-size:var(--text-body);line-height:var(--leading-normal)}',
       '@media (prefers-color-scheme: light){.persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}}',
@@ -951,8 +962,8 @@
     return {
       key: String(source.key || 'custom-skill-' + (index + 1)),
       title: String(source.title || source.name || 'Custom skill ' + (index + 1)),
-      summary: String(source.summary || source.description || 'Describe what this skill adds.'),
-      content: String(source.content || source.promptTemplate || 'Add markdown instructions here.'),
+      summary: String(source.summary || source.description || CUSTOM_SKILL_DEFAULT_SUMMARY),
+      content: String(source.content || source.promptTemplate || CUSTOM_SKILL_DEFAULT_CONTENT),
       variables: ensureArray(source.variables).map(normalizeSkillVariable),
     };
   }
@@ -1009,6 +1020,16 @@
   function bindInput(input, handler) {
     input.addEventListener('input', handler);
     input.addEventListener('change', handler);
+  }
+
+  function disableSmartText(input) {
+    if (!input) return input;
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('autocapitalize', 'none');
+    input.setAttribute('spellcheck', 'false');
+    input.spellcheck = false;
+    return input;
   }
 
   function toggleListValue(list, value) {
@@ -2025,6 +2046,14 @@
       if (content) {
         content.scrollTop = state.contentScrollTop || 0;
         content.scrollLeft = state.contentScrollLeft || 0;
+        if (state.contentScrollAnchorKey) {
+          var anchor = content.querySelector('[data-persona-scroll-anchor="' + cssEscape(state.contentScrollAnchorKey) + '"]');
+          if (anchor) {
+            content.scrollTop += anchor.getBoundingClientRect().top - state.contentScrollAnchorTop;
+          }
+          state.contentScrollAnchorKey = '';
+          state.contentScrollAnchorTop = 0;
+        }
       }
       var navList = state.container.querySelector('.persona-lab-nav-list');
       if (navList) {
@@ -2059,6 +2088,23 @@
       element.setAttribute('data-persona-focus-key', key);
     }
     return element;
+  }
+
+  function markScrollAnchor(element, key) {
+    if (element && key) {
+      element.setAttribute('data-persona-scroll-anchor', key);
+    }
+    return element;
+  }
+
+  function captureContentScrollAnchor(state, element) {
+    if (!state.container || !element) return;
+    var content = state.container.querySelector('.persona-lab-content');
+    if (!content || !content.contains(element)) return;
+    var key = element.getAttribute('data-persona-scroll-anchor') || '';
+    if (!key) return;
+    state.contentScrollAnchorKey = key;
+    state.contentScrollAnchorTop = element.getBoundingClientRect().top;
   }
 
   function cssEscape(value) {
@@ -2670,6 +2716,16 @@
     var payload = clone(state.form);
     payload.draft.modelPolicy.workflowModels = workflowModels;
     payload.draft.orchestration = normalizeOrchestration(payload.draft.orchestration);
+    payload.customSkills = ensureArray(payload.customSkills).map(serializeCustomSkillForSave);
+
+    var customSkillErrors = validateCustomSkillsForSave(payload.customSkills);
+    if (customSkillErrors.length) {
+      var validationError = new Error(customSkillErrors.join('\n'));
+      state.saving = false;
+      setError(state, validationError.message);
+      renderState(state);
+      return Promise.reject(validationError);
+    }
 
     return request(
       'PUT',
@@ -4047,6 +4103,113 @@
     return text.length > 520 ? text.slice(0, 517) + '...' : text;
   }
 
+  function isDefaultCustomSkillTitle(value) {
+    return String(value || '').trim().toLowerCase() === CUSTOM_SKILL_DEFAULT_TITLE.toLowerCase();
+  }
+
+  function customSkillDisplayName(skill, index) {
+    var title = String(skill && skill.title ? skill.title : '').trim();
+    var key = String(skill && skill.key ? skill.key : '').trim();
+    var summary = String(skill && skill.summary ? skill.summary : '').trim();
+    if (title && !isDefaultCustomSkillTitle(title)) return title;
+    if (key) return humanizeIdentifier(key);
+    if (summary && summary !== CUSTOM_SKILL_DEFAULT_SUMMARY) {
+      return summary.length > 72 ? summary.slice(0, 69) + '...' : summary;
+    }
+    return 'Custom skill ' + (index + 1);
+  }
+
+  function customSkillSummaryMeta(skill) {
+    var summary = String(skill && skill.summary ? skill.summary : '').trim();
+    var key = String(skill && skill.key ? skill.key : '').trim();
+    if (summary && summary !== CUSTOM_SKILL_DEFAULT_SUMMARY) {
+      return summary.length > 96 ? summary.slice(0, 93) + '...' : summary;
+    }
+    return key;
+  }
+
+  function nextCustomSkillKey(skills) {
+    var existing = {};
+    ensureArray(skills).forEach(function (skill) {
+      var key = String(skill && skill.key ? skill.key : '').trim();
+      if (key) existing[key] = true;
+    });
+    var index = ensureArray(skills).length + 1;
+    var key = 'custom-skill-' + index;
+    while (existing[key]) {
+      index += 1;
+      key = 'custom-skill-' + index;
+    }
+    return key;
+  }
+
+  function serializeSkillVariableForSave(variable, index) {
+    var source = ensureObject(variable);
+    var serialized = {
+      name: String(source.name || '').trim(),
+      label: String(source.label || '').trim(),
+      type: String(source.type || 'text').trim() || 'text',
+      required: source.required !== false,
+    };
+    if (source.default !== undefined) {
+      serialized.default = source.default;
+    }
+    if (!serialized.label) {
+      serialized.label = serialized.name || 'Variable ' + (index + 1);
+    }
+    return serialized;
+  }
+
+  function serializeCustomSkillForSave(skill, index) {
+    var source = ensureObject(skill);
+    var title = String(source.title || '').trim();
+    return {
+      key: String(source.key || '').trim(),
+      title: title && !isDefaultCustomSkillTitle(title) ? title : customSkillDisplayName(source, index),
+      summary: String(source.summary || '').trim(),
+      content: source.content == null ? '' : String(source.content),
+      variables: ensureArray(source.variables).map(serializeSkillVariableForSave),
+    };
+  }
+
+  function validateCustomSkillsForSave(skills) {
+    var errors = [];
+    var skillKeys = {};
+    ensureArray(skills).forEach(function (skill, index) {
+      var label = 'Custom skill ' + (index + 1);
+      var key = String(skill && skill.key ? skill.key : '').trim();
+      if (!key) {
+        errors.push(label + ' needs a key.');
+      } else if (skillKeys[key]) {
+        errors.push('Custom skill key "' + key + '" is used more than once.');
+      } else {
+        skillKeys[key] = true;
+      }
+      if (!String(skill && skill.title ? skill.title : '').trim()) {
+        errors.push((key || label) + ' needs a title.');
+      }
+      if (!String(skill && skill.summary ? skill.summary : '').trim()) {
+        errors.push((key || label) + ' needs a summary.');
+      }
+      if (!String(skill && skill.content ? skill.content : '').trim()) {
+        errors.push((key || label) + ' needs prompt content.');
+      }
+      var variableNames = {};
+      ensureArray(skill && skill.variables).forEach(function (variable, variableIndex) {
+        var variableLabel = (key || label) + ' variable ' + (variableIndex + 1);
+        var name = String(variable && variable.name ? variable.name : '').trim();
+        if (!name) {
+          errors.push(variableLabel + ' needs a name.');
+        } else if (variableNames[name]) {
+          errors.push((key || label) + ' variable "' + name + '" is used more than once.');
+        } else {
+          variableNames[name] = true;
+        }
+      });
+    });
+    return errors;
+  }
+
   function skillVariableMergeToken(variable) {
     var name = String(variable && variable.name ? variable.name : '').trim();
     return name ? '{{' + name + '}}' : '';
@@ -4070,16 +4233,20 @@
   }
 
   function buildSkillVariableInsertTools(skill, editor) {
-    var variables = ensureArray(skill && skill.variables)
-      .map(function (variable, index) { return normalizeSkillVariable(variable, index); })
-      .filter(function (variable) { return Boolean(String(variable.name || '').trim()); });
+    function currentVariables() {
+      return ensureArray(skill && skill.variables)
+        .map(function (variable, index) { return normalizeSkillVariable(variable, index); })
+        .filter(function (variable) { return Boolean(String(variable.name || '').trim()); });
+    }
+
+    var initialVariables = currentVariables();
 
     var wrapper = createEl('div', 'persona-lab-skill-editor-tools');
     wrapper.appendChild(
       createEl(
         'div',
         'persona-lab-helper',
-        variables.length
+        initialVariables.length
           ? 'Insert a merge token into the skill prompt. Runtime expansion replaces tokens such as {{account_name}} with the collected value.'
           : 'Add variables to this skill, then insert merge tokens into the prompt from here.'
       )
@@ -4087,24 +4254,25 @@
 
     var picker = createEl('details', 'persona-lab-variable-picker');
     var summary = createEl('summary', 'persona-lab-button');
-    summary.textContent = variables.length ? 'Insert variable' : 'No variables';
-    summary.title = variables.length
+    summary.textContent = initialVariables.length ? 'Insert variable' : 'No variables';
+    summary.title = initialVariables.length
       ? 'Find a skill variable and insert its merge token at the cursor.'
       : 'Add a variable to this skill before inserting merge tokens.';
-    if (!variables.length) {
+    if (!initialVariables.length) {
       summary.setAttribute('aria-disabled', 'true');
     }
     picker.appendChild(summary);
 
-    if (variables.length) {
+    if (initialVariables.length) {
       var menu = createEl('div', 'persona-lab-variable-picker-menu');
-      var search = createEl('input', 'persona-lab-input');
+      var search = disableSmartText(createEl('input', 'persona-lab-input'));
       search.type = 'search';
       search.placeholder = 'Find variable';
       search.setAttribute('aria-label', 'Find skill variable');
       var list = createEl('div', 'persona-lab-variable-picker-list');
 
       function renderOptions() {
+        var variables = currentVariables();
         var query = String(search.value || '').trim().toLowerCase();
         list.innerHTML = '';
         var matches = variables.filter(function (variable) {
@@ -4193,9 +4361,13 @@
 	      'Variables',
 	      'Variables let a skill ask for user-specific values before the prompt is generated. Example: audience, account_name, date_start.'
     );
-    var addVariable = createEl('button', 'persona-lab-button', 'Add variable');
+    var addVariable = markScrollAnchor(
+      createEl('button', 'persona-lab-button', 'Add variable'),
+      'custom-skill-' + skillIndex + '-add-variable'
+    );
     addVariable.type = 'button';
     addVariable.addEventListener('click', function () {
+      captureContentScrollAnchor(state, addVariable);
       skill.variables.push(defaultSkillVariable(skill.variables.length));
       state.expandedCustomSkillIndex = skillIndex;
       updateDirtyState(state);
@@ -4212,7 +4384,7 @@
       var rowId = ensureVariableRowId(state, variable);
       var row = createEl('div', 'persona-lab-variable-row');
 
-      var nameInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-name');
+      var nameInput = disableSmartText(markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-name'));
       nameInput.value = variable.name || '';
       bindInput(nameInput, function () {
         variable.name = nameInput.value;
@@ -4242,7 +4414,7 @@
       });
       renderFieldGroup(row, 'Type', typeSelect, 'Input type used when collecting the value. Example: textarea for a long customer brief.');
 
-      var defaultInput = markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-default');
+      var defaultInput = disableSmartText(markFocusKey(createEl('input', 'persona-lab-input'), 'skill-' + skillIndex + '-' + rowId + '-default'));
       defaultInput.value = variable.default == null ? '' : String(variable.default);
       bindInput(defaultInput, function () {
         variable.default = defaultInput.value;
@@ -6360,7 +6532,7 @@
       body.appendChild(createEl('div', 'persona-lab-error', state.skillEditorError));
     }
     if (skill) {
-	      var editor = createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor');
+	      var editor = disableSmartText(createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor'));
 	      editor.value = state.skillEditorDraft || '';
 	      editor.placeholder = 'Add markdown instructions for when and how this custom skill should be used.';
       bindInput(editor, function () {
@@ -7056,19 +7228,26 @@
       var skillSummary = createEl('summary', 'persona-lab-details-summary');
       var variableCount = ensureArray(skill.variables).length;
       skillSummary.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
-	      skillSummary.appendChild(createEl('strong', null, skill.title || ('Skill ' + (index + 1))));
+      var skillSummaryCopy = createEl('div', 'persona-lab-skill-summary-copy');
+      var skillSummaryTitle = createEl('strong');
+      var skillSummaryMeta = createEl('span', 'persona-lab-skill-summary-meta');
+      function refreshSkillSummary() {
+        var meta = customSkillSummaryMeta(skill);
+        skillSummaryTitle.textContent = customSkillDisplayName(skill, index);
+        skillSummaryMeta.textContent = meta;
+        skillSummaryMeta.hidden = !meta;
+      }
+      refreshSkillSummary();
+      skillSummaryCopy.appendChild(skillSummaryTitle);
+      skillSummaryCopy.appendChild(skillSummaryMeta);
+      skillSummary.appendChild(skillSummaryCopy);
       skillSummary.appendChild(createEl('span', 'persona-lab-badge', formatNumber(variableCount) + ' variable' + (variableCount === 1 ? '' : 's')));
       skillCard.appendChild(skillSummary);
       var skillBody = createEl('div', 'persona-lab-details-body');
       var skillHeader = createEl('div', 'persona-lab-skill-header');
-      skillHeader.appendChild(createEl('strong', null, skill.key || ('custom-skill-' + (index + 1))));
+      var skillKeyHeading = createEl('strong', null, skill.key || ('custom-skill-' + (index + 1)));
+      skillHeader.appendChild(skillKeyHeading);
       var skillActions = createEl('div', 'persona-lab-skill-actions');
-      var edit = createEl('button', 'persona-lab-button', 'Edit');
-      edit.type = 'button';
-      edit.addEventListener('click', function () {
-        openCustomSkillEditor(state, index);
-      });
-      skillActions.appendChild(edit);
       var remove = createEl('button', 'persona-lab-button', 'Remove');
       remove.type = 'button';
       remove.addEventListener('click', function () {
@@ -7086,22 +7265,39 @@
       skillActions.appendChild(remove);
       skillHeader.appendChild(skillActions);
       skillBody.appendChild(skillHeader);
+      var skillMetaGrid = createEl('div', 'persona-lab-skill-meta-grid');
       ['key', 'title', 'summary'].forEach(function (field) {
         var input = markFocusKey(createEl('input', 'persona-lab-input'), 'custom-skill-' + index + '-' + field);
+        if (field === 'key') disableSmartText(input);
         input.value = skill[field] || '';
         bindInput(input, function () {
           skill[field] = input.value;
+          refreshSkillSummary();
+          if (field === 'key') {
+            skillKeyHeading.textContent = skill.key || ('custom-skill-' + (index + 1));
+          }
           updateDirtyState(state);
         });
-        renderFieldGroup(skillBody, field, input, customSkillHelp[field]);
+        var fieldGroup = renderFieldGroup(skillMetaGrid, field, input, customSkillHelp[field]);
+        if (field === 'summary') fieldGroup.style.gridColumn = '1 / -1';
       });
-      renderFieldGroup(
-        skillBody,
-        'content',
-        createEl('pre', 'persona-lab-skill-preview', compactSkillContent(skill.content)),
-        customSkillHelp.content
-      );
+      skillBody.appendChild(skillMetaGrid);
       skillBody.appendChild(buildSkillVariableEditor(state, skill, index));
+      var promptPanel = createEl('div', 'persona-lab-skill-prompt-panel');
+      appendSectionHeading(promptPanel, 'h3', 'Prompt', customSkillHelp.content);
+      var promptEditor = disableSmartText(markFocusKey(
+        createEl('textarea', 'persona-lab-textarea persona-lab-skill-editor'),
+        'custom-skill-' + index + '-content'
+      ));
+      promptEditor.value = skill.content || '';
+      promptEditor.placeholder = 'Add markdown instructions for when and how this custom skill should be used.';
+      bindInput(promptEditor, function () {
+        skill.content = promptEditor.value;
+        updateDirtyState(state);
+      });
+      promptPanel.appendChild(buildSkillVariableInsertTools(skill, promptEditor));
+      renderFieldGroup(promptPanel, 'Content', promptEditor);
+      skillBody.appendChild(promptPanel);
       skillCard.appendChild(skillBody);
       skillList.appendChild(skillCard);
     });
@@ -7112,17 +7308,19 @@
 	    var addSkill = createEl('button', 'persona-lab-button', 'Add custom skill');
     addSkill.type = 'button';
 	    addSkill.addEventListener('click', function () {
-	      state.form.customSkills.push({
-	        key: 'custom-skill-' + (state.form.customSkills.length + 1),
-	        title: 'New custom skill',
-	        summary: 'Describe what this skill adds.',
-	        content: 'Add markdown instructions here.',
+      state.form.customSkills = ensureArray(state.form.customSkills);
+      var nextKey = nextCustomSkillKey(state.form.customSkills);
+      state.form.customSkills.push({
+        key: nextKey,
+        title: humanizeIdentifier(nextKey),
+        summary: CUSTOM_SKILL_DEFAULT_SUMMARY,
+        content: CUSTOM_SKILL_DEFAULT_CONTENT,
 	        variables: [],
       });
-      state.skillEditorOpen = true;
-      state.skillEditorIndex = state.form.customSkills.length - 1;
-      state.expandedCustomSkillIndex = state.skillEditorIndex;
-      state.skillEditorDraft = 'Add markdown instructions here.';
+      state.skillEditorOpen = false;
+      state.skillEditorIndex = -1;
+      state.expandedCustomSkillIndex = state.form.customSkills.length - 1;
+      state.skillEditorDraft = '';
       state.skillEditorError = '';
       updateDirtyState(state);
       renderState(state);

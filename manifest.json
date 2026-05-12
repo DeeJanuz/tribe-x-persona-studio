@@ -1,6 +1,6 @@
 {
   "name": "tribe-x-ai-plugin",
-  "version": "0.1.13",
+  "version": "0.1.16",
   "renderers": {
     "relay-probe": "rich_content"
   },
