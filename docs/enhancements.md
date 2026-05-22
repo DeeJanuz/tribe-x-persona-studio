@@ -13,9 +13,9 @@ This document tracks technical debt items identified by the solid-reviewer agent
 
 ## Latest Session Summary
 
-**Last Review:** 2026-04-22 — `bb03f58` (`Add model pricing metadata to Persona Studio selector`)
+**Last Review:** 2026-05-12 — `db15993` (`Fix Add variable scroll anchoring in Persona Studio`)
 
-One medium-risk behavioral finding was identified and resolved in the follow-up working tree change: the required default model fallback now marks the editable draft dirty so save-first launches persist the displayed model selection. No structural SOLID violations were identified.
+No material findings were identified. The change keeps the custom-skill authoring behavior inside the existing Persona Studio renderer, with focused helpers for display names, serialization, validation, variable insertion, and scroll anchoring. Residual risk is UI-level only because the plugin repo still has no automated browser coverage for the inline custom-skill composer.
 
 ---
 
