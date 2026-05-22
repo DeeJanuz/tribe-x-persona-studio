@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-21-consultant-org-kind-fallback-v1';
+  var RENDERER_VERSION = '2026-05-21-consultant-org-error-clear-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -263,6 +263,7 @@
       state.organizationName === nextOrganization.name &&
       state.organizationKind === nextOrganization.kind
     ) {
+      clearConsultantOrganizationContextError(state);
       return false;
     }
     if (state.dirty && state.organizationId !== nextOrganization.id) {
@@ -299,6 +300,7 @@
     state.deleteConfirmSubmitting = false;
     state.deleteConfirmError = '';
     clearSelectedPersona(state);
+    clearConsultantOrganizationContextError(state);
     return true;
   }
 
@@ -321,6 +323,22 @@
       return 'Select a consultant organization before opening Persona Studio.';
     }
     return 'Persona Studio authoring is available only for consultant organizations. Select a consultant organization to create and edit personas.';
+  }
+
+  function isConsultantOrganizationContextError(message) {
+    var text = String(message || '');
+    return text === 'Select a consultant organization before opening Persona Studio.' ||
+      text === 'Persona Studio authoring is available only for consultant organizations. Select a consultant organization to create and edit personas.';
+  }
+
+  function clearConsultantOrganizationContextError(state) {
+    if (
+      state &&
+      selectedConsultantOrganizationId(state) &&
+      isConsultantOrganizationContextError(state.error)
+    ) {
+      state.error = '';
+    }
   }
 
   function normalizeOrganizationOption(raw, index) {
