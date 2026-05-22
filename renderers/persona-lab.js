@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-12-skill-variable-scroll-anchor-v1';
+  var RENDERER_VERSION = '2026-05-21-consultant-org-kind-fallback-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -216,10 +216,21 @@
       var snapshot = window.__tribexAiState.getSnapshot();
       var organization = snapshot && snapshot.selectedOrganization;
       if (organization && organization.id) {
+        var knownOrganization = findKnownOrganization(state, organization.id);
+        var knownKind = knownOrganization && knownOrganization.kind ? knownOrganization.kind : '';
+        var preservedKind =
+          state && state.organizationId === String(organization.id) && state.organizationKind
+            ? state.organizationKind
+            : '';
         return {
           id: String(organization.id),
-          name: String(organization.name || organization.slug || organization.id),
-          kind: String(organization.kind || ''),
+          name: String(
+            organization.name ||
+              organization.slug ||
+              (knownOrganization && knownOrganization.name) ||
+              organization.id
+          ),
+          kind: String(organization.kind || knownKind || preservedKind || ''),
         };
       }
     }
@@ -231,6 +242,14 @@
       };
     }
     return { id: null, name: '', kind: '' };
+  }
+
+  function findKnownOrganization(state, organizationId) {
+    var id = String(organizationId || '');
+    if (!id) return null;
+    return ensureArray(state && state.organizations).find(function (organization) {
+      return organization && String(organization.id || '') === id;
+    }) || null;
   }
 
   function applyOrganizationContext(state, organization) {
@@ -305,15 +324,25 @@
   }
 
   function normalizeOrganizationOption(raw, index) {
-    var source = ensureObject(raw);
+    var rawSource = ensureObject(raw);
+    var source = ensureObject(rawSource.organization);
+    if (!Object.keys(source).length) source = rawSource;
     var id = source.id || source.organizationId || source.orgId || ('organization-' + index);
     var name = source.name || source.title || source.slug || id;
+    var rawKind =
+      source.kind ||
+      source.organizationKind ||
+      source.type ||
+      rawSource.kind ||
+      rawSource.organizationKind ||
+      rawSource.type ||
+      'OTHER';
     return {
       id: String(id),
       name: String(name),
       slug: String(source.slug || ''),
       role: source.role || source.membershipRole || null,
-      kind: String(source.kind || 'OTHER').toUpperCase(),
+      kind: String(rawKind || 'OTHER').toUpperCase(),
     };
   }
 
@@ -340,13 +369,15 @@
   }
 
   function fetchPersonaStudioOrganizations() {
-    if (
-      window.__tribexAiClient &&
-      typeof window.__tribexAiClient.fetchOrganizations === 'function'
-    ) {
-      return window.__tribexAiClient.fetchOrganizations();
-    }
-    return request('GET', '/organizations', null, null);
+    return request('GET', '/organizations', null, null).catch(function (error) {
+      if (
+        window.__tribexAiClient &&
+        typeof window.__tribexAiClient.fetchOrganizations === 'function'
+      ) {
+        return window.__tribexAiClient.fetchOrganizations();
+      }
+      throw error;
+    });
   }
 
   function loadOrganizations(state) {

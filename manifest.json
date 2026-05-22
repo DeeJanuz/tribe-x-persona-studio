@@ -1,7 +1,7 @@
 {
   "name": "tribe-x-persona-studio",
-  "version": "0.1.1-rc.1",
-  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.1/tribe-x-persona-studio.zip",
+  "version": "0.1.1-rc.2",
+  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.2/tribe-x-persona-studio.zip",
   "renderers": {
     "relay-probe": "rich_content"
   },
