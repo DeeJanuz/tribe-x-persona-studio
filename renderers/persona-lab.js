@@ -117,6 +117,12 @@
         organizationId: null,
         organizationName: '',
         organizationKind: '',
+        organizations: [],
+        organizationsLoaded: false,
+        organizationsLoading: false,
+        organizationsPromise: null,
+        organizationSelectSubmitting: false,
+        organizationSelectError: '',
         showArchivedPersonas: false,
         navGroupExpansion: {},
         personaFolders: [],
@@ -202,7 +208,7 @@
     return globalState.sessions[sessionId];
   }
 
-  function selectedOrganizationSnapshot() {
+  function selectedOrganizationSnapshot(state) {
     if (
       window.__tribexAiState &&
       typeof window.__tribexAiState.getSnapshot === 'function'
@@ -217,24 +223,35 @@
         };
       }
     }
+    if (state && state.organizationId) {
+      return {
+        id: state.organizationId,
+        name: state.organizationName || state.organizationId,
+        kind: state.organizationKind || '',
+      };
+    }
     return { id: null, name: '', kind: '' };
   }
 
-  function syncOrganizationContext(state) {
-    var organization = selectedOrganizationSnapshot();
+  function applyOrganizationContext(state, organization) {
+    var nextOrganization = {
+      id: organization && organization.id ? String(organization.id) : null,
+      name: organization && organization.name ? String(organization.name) : '',
+      kind: organization && organization.kind ? String(organization.kind) : '',
+    };
     if (
-      state.organizationId === organization.id &&
-      state.organizationName === organization.name &&
-      state.organizationKind === organization.kind
+      state.organizationId === nextOrganization.id &&
+      state.organizationName === nextOrganization.name &&
+      state.organizationKind === nextOrganization.kind
     ) {
       return false;
     }
-    if (state.dirty && state.organizationId !== organization.id) {
+    if (state.dirty && state.organizationId !== nextOrganization.id) {
       setError(state, 'Organization changed. Unsaved persona edits were discarded so the catalog can reload.');
     }
-    state.organizationId = organization.id;
-    state.organizationName = organization.name;
-    state.organizationKind = organization.kind;
+    state.organizationId = nextOrganization.id;
+    state.organizationName = nextOrganization.name;
+    state.organizationKind = nextOrganization.kind;
     state.bootstrapLoaded = false;
     state.bootstrapPromise = null;
     state.personas = [];
@@ -266,6 +283,10 @@
     return true;
   }
 
+  function syncOrganizationContext(state) {
+    return applyOrganizationContext(state, selectedOrganizationSnapshot(state));
+  }
+
   function selectedConsultantOrganizationId(state) {
     return state.organizationKind === 'CONSULTANT' && state.organizationId
       ? state.organizationId
@@ -281,6 +302,126 @@
       return 'Select a consultant organization before opening Persona Studio.';
     }
     return 'Persona Studio authoring is available only for consultant organizations. Select a consultant organization to create and edit personas.';
+  }
+
+  function normalizeOrganizationOption(raw, index) {
+    var source = ensureObject(raw);
+    var id = source.id || source.organizationId || source.orgId || ('organization-' + index);
+    var name = source.name || source.title || source.slug || id;
+    return {
+      id: String(id),
+      name: String(name),
+      slug: String(source.slug || ''),
+      role: source.role || source.membershipRole || null,
+      kind: String(source.kind || 'OTHER').toUpperCase(),
+    };
+  }
+
+  function organizationItemsFromResponse(raw) {
+    if (Array.isArray(raw)) return raw;
+    var source = ensureObject(raw);
+    if (Array.isArray(source.organizations)) return source.organizations;
+    if (Array.isArray(source.items)) return source.items;
+    if (Array.isArray(source.results)) return source.results;
+    return [];
+  }
+
+  function consultantOrganizationOptions(state) {
+    return ensureArray(state.organizations).filter(function (organization) {
+      return organization && organization.kind === 'CONSULTANT' && organization.id;
+    });
+  }
+
+  function findConsultantOrganization(state, organizationId) {
+    var id = String(organizationId || '');
+    return consultantOrganizationOptions(state).find(function (organization) {
+      return organization.id === id;
+    }) || null;
+  }
+
+  function fetchPersonaStudioOrganizations() {
+    if (
+      window.__tribexAiClient &&
+      typeof window.__tribexAiClient.fetchOrganizations === 'function'
+    ) {
+      return window.__tribexAiClient.fetchOrganizations();
+    }
+    return request('GET', '/organizations', null, null);
+  }
+
+  function loadOrganizations(state) {
+    if (state.organizationsPromise) {
+      return state.organizationsPromise;
+    }
+    state.organizationsLoading = true;
+    state.organizationSelectError = '';
+    state.organizationsPromise = Promise.resolve(fetchPersonaStudioOrganizations())
+      .then(function (raw) {
+        state.organizations = organizationItemsFromResponse(raw).map(normalizeOrganizationOption);
+        state.organizationsLoaded = true;
+        state.organizationsLoading = false;
+        state.organizationsPromise = null;
+        renderState(state);
+        return state.organizations;
+      })
+      .catch(function (error) {
+        state.organizationsLoading = false;
+        state.organizationsPromise = null;
+        state.organizationSelectError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
+    renderState(state);
+    return state.organizationsPromise;
+  }
+
+  function selectConsultantOrganization(state, organizationId) {
+    var organization = findConsultantOrganization(state, organizationId);
+    if (!organization) {
+      state.organizationSelectError = 'Choose a consultant organization.';
+      renderState(state);
+      return Promise.resolve(false);
+    }
+    if (state.organizationId === organization.id && state.organizationKind === 'CONSULTANT') {
+      return Promise.resolve(true);
+    }
+    if (
+      state.dirty &&
+      !window.confirm('You have unsaved persona changes. Discard them and switch consultant organizations?')
+    ) {
+      renderState(state);
+      return Promise.resolve(false);
+    }
+
+    state.organizationSelectSubmitting = true;
+    state.organizationSelectError = '';
+    renderState(state);
+
+    var aiState = window.__tribexAiState;
+    var selectPromise = aiState && typeof aiState.selectOrganization === 'function'
+      ? aiState.selectOrganization(organization.id)
+      : Promise.resolve();
+
+    return Promise.resolve(selectPromise)
+      .then(function () {
+        applyOrganizationContext(state, organization);
+        return fetchBootstrap(state);
+      })
+      .then(function () {
+        if (!state.error) {
+          setStatus(state, 'Using consultant organization: ' + organization.name + '.');
+        }
+        return true;
+      })
+      .catch(function (error) {
+        state.organizationSelectError = stringifyError(error);
+        setError(state, state.organizationSelectError);
+        throw error;
+      })
+      .finally(function () {
+        state.organizationSelectSubmitting = false;
+        renderState(state);
+      });
   }
 
   function personaAuthoringQuery(state, extra) {
@@ -324,6 +465,10 @@
       '.persona-lab-nav-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
       '.persona-lab-nav-controls{display:flex;flex-direction:column;align-items:stretch;gap:10px}',
       '.persona-lab-nav-controls>.persona-lab-button{width:100%}',
+      '.persona-lab-org-selector{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-org-selector .persona-lab-field{gap:6px}',
+      '.persona-lab-org-selector .persona-lab-helper,.persona-lab-org-selector .persona-lab-error{font-size:11px;line-height:1.35}',
+      '.persona-lab-org-selector .persona-lab-button{align-self:flex-start}',
       '.persona-lab-segmented{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:3px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-segmented button{appearance:none;min-height:30px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer}',
       '.persona-lab-segmented button:hover:not(:disabled){color:var(--text-primary);background:var(--bg-surface-hover)}',
@@ -5293,6 +5438,69 @@
     return item;
   }
 
+  function renderConsultantOrganizationSelector(state) {
+    var wrapper = createEl('div', 'persona-lab-org-selector');
+    var consultants = consultantOrganizationOptions(state);
+    var selectedId = selectedConsultantOrganizationId(state);
+    var select = createEl('select', 'persona-lab-select');
+    select.disabled =
+      state.organizationsLoading ||
+      state.organizationSelectSubmitting ||
+      consultants.length === 0;
+    var placeholder = createEl(
+      'option',
+      null,
+      state.organizationsLoading
+        ? 'Loading organizations...'
+        : consultants.length
+          ? 'Select consultant organization'
+          : 'No consultant organizations'
+    );
+    placeholder.value = '';
+    select.appendChild(placeholder);
+    consultants.forEach(function (organization) {
+      var option = createEl('option', null, organization.name);
+      option.value = organization.id;
+      option.title = organization.slug || organization.id;
+      select.appendChild(option);
+    });
+    select.value = selectedId;
+    select.addEventListener('change', function () {
+      selectConsultantOrganization(state, select.value).catch(function () {});
+    });
+    renderFieldGroup(
+      wrapper,
+      'Consultant org',
+      select,
+      'Only consultant organizations can author and save Persona Studio personas.'
+    );
+
+    if (state.organizationSelectError) {
+      wrapper.appendChild(createEl('div', 'persona-lab-error compact', state.organizationSelectError));
+    } else if (state.organizationKind && state.organizationKind !== 'CONSULTANT') {
+      wrapper.appendChild(createEl('div', 'persona-lab-helper', 'The current organization is not a consultant org.'));
+    } else if (state.organizationsLoaded && consultants.length === 0) {
+      wrapper.appendChild(createEl('div', 'persona-lab-helper', 'No consultant organizations are available for this session.'));
+    } else {
+      wrapper.appendChild(createEl('div', 'persona-lab-helper', 'Only consultant organizations are shown.'));
+    }
+
+    var refreshButton = createEl(
+      'button',
+      'persona-lab-button small subtle',
+      state.organizationsLoading ? 'Refreshing...' : 'Refresh organizations'
+    );
+    refreshButton.type = 'button';
+    refreshButton.disabled = state.organizationsLoading || state.organizationSelectSubmitting;
+    refreshButton.addEventListener('click', function () {
+      state.organizationsLoaded = false;
+      state.organizationsPromise = null;
+      loadOrganizations(state).catch(function () {});
+    });
+    wrapper.appendChild(refreshButton);
+    return wrapper;
+  }
+
   function buildNav(state) {
     var nav = createEl('aside', 'persona-lab-nav');
     var canAuthor = hasConsultantOrganizationContext(state);
@@ -5314,6 +5522,8 @@
     nav.appendChild(header);
 
     var controls = createEl('div', 'persona-lab-nav-controls');
+    controls.appendChild(renderConsultantOrganizationSelector(state));
+
     var modeControl = createEl('div', 'persona-lab-segmented');
     var activeModeButton = createEl(
       'button',
@@ -7479,6 +7689,9 @@
     state.container = container;
     syncOrganizationContext(state);
     renderState(state);
+    if (!state.organizationsLoaded && !state.organizationsPromise) {
+      loadOrganizations(state).catch(function () {});
+    }
     if (!state.bootstrapLoaded && !state.bootstrapPromise) {
       fetchBootstrap(state);
     }
