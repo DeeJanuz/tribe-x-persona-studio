@@ -2,12 +2,12 @@
 
 ## Goal
 
-Move the Tribe-X AI feature set out of MCPViews core and into a closed plugin without changing the installed user experience in any meaningful way.
+Package Persona Studio as a public MCPViews plugin without changing the installed authoring experience in any meaningful way.
 
 ## Working Assumptions
 
 - MCPViews remains the open-source host platform
-- The Tribe-X AI feature remains closed-source
+- Persona Studio is distributed as a public plugin repository
 - MCPViews can gain generic plugin host capabilities where needed
 - The plugin should be discoverable through the MCPViews built-in registry flow
 
@@ -22,9 +22,9 @@ Move the Tribe-X AI feature set out of MCPViews core and into a closed plugin wi
 
 ### 2. Plugin Extraction
 
-- Move AI shell, thread renderer, state, and runtime UI into this repo
-- Rebuild auth and hosted backend access as plugin-owned integrations
-- Package the plugin for registry install as a private distribution artifact
+- Keep the Persona Studio renderer in this repo
+- Use MCPViews first-party AI configuration for hosted backend access
+- Package the plugin for registry install as a public distribution artifact
 
 ### 3. Migration Safety
 

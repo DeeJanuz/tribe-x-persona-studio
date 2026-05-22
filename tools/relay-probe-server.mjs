@@ -4,10 +4,10 @@ import http from "node:http";
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 4877);
-const SERVER_NAME = "tribe-x-ai-plugin-relay-probe";
-const SERVER_VERSION = "0.1.17-rc.1";
+const SERVER_NAME = "tribe-x-persona-studio-relay-probe";
+const SERVER_VERSION = "0.1.0";
 const TOOL_NAME = "relay-probe";
-const PREFIXED_TOOL_NAME = "tribe-x-ai-plugin__relay-probe";
+const PREFIXED_TOOL_NAME = "tribe_x_persona_studio__relay-probe";
 
 const toolDefinition = {
   name: TOOL_NAME,
@@ -89,7 +89,7 @@ function buildProbeResult(args) {
   const includeContext = args.includeContext !== false;
   const result = {
     ok: true,
-    tool: "tribe-x-ai-plugin.relay-probe",
+    tool: "tribe-x-persona-studio.relay-probe",
     relayToolName: PREFIXED_TOOL_NAME,
     marker: String(args.marker || ""),
     message: typeof args.message === "string" ? args.message : "",

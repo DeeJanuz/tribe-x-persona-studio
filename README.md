@@ -1,25 +1,24 @@
-# Tribe-X AI Plugin
+# Tribe-X Persona Studio
 
-Closed-source Tribe-X AI plugin extracted from MCPViews core.
+Public MCPViews plugin for TribeX Persona Studio.
 
 ## Purpose
 
-This repository will hold the plugin-owned implementation for the Tribe-X AI experience so MCPViews can remain open-source while the installed AI workflow continues to behave the same for users.
+This repository packages the standalone Persona Studio renderer for MCPViews. It connects to the TribeX AI Cloudflare dev control plane through MCPViews first-party AI configuration and provides a consultant-scoped persona authoring workspace.
 
 ## Current Focus
 
-- Define the plugin boundary between MCPViews core and the closed AI feature set
-- Stand up the plugin repository and planning artifacts
-- Extend Persona Studio into a save-first evaluation workspace for single-run and parallel persona testing
-- Keep Persona Studio aligned with ProPaasAI-provided persona tooling metadata, including orchestration controls, dynamically discovered business tools, and priced model catalog choices
+- Keep Persona Studio as a consultant-only authoring surface for creating and editing consultant-owned personas
+- Require the selected native AI organization to have kind `CONSULTANT`
+- Launch save-first single-run and parallel persona tests in the selected consultant organization
+- Keep Persona Studio aligned with TribeX AI persona tooling metadata, including orchestration controls, dynamically discovered business tools, and priced model catalog choices
 
 ## Initial Scope
 
-- Plugin-owned AI shell, thread renderer, and runtime UI
-- Plugin-owned auth and hosted backend integration
-- Plugin-owned Persona Studio authoring and evaluation workflows, including persisted parallel test batches and dynamic persona tool controls
-- Plugin-owned planning and architecture records
-- Coordination artifacts linked back to DecidR and Ludflow
+- Persona Studio renderer (`persona_lab`)
+- First-party AI control-plane requests through the MCPViews bridge
+- Consultant-owned persona authoring and evaluation workflows
+- Local deterministic relay-probe MCP tool for integration testing
 
 ## Planned Companion Documents
 
@@ -35,8 +34,8 @@ This repository will hold the plugin-owned implementation for the Tribe-X AI exp
 bash build.sh
 ```
 
-The build reads `manifest.json.version`, synchronizes `manifest.json.download_url`, and writes `release/tribe-x-ai-plugin.zip` for MCPViews registry installation.
+The build reads `manifest.json.version`, synchronizes `manifest.json.download_url`, and writes `release/tribe-x-persona-studio.zip` for MCPViews registry installation.
 
 ## Release Notes
 
-Keep `RELEASE_NOTES.md` current under `# Unreleased` whenever a change should appear in the GitHub release body or MCPViews update changelog. Bumping `manifest.json.version` on `master` triggers the release workflow; prerelease versions such as `0.1.17-rc.1` publish as GitHub prereleases.
+Keep `RELEASE_NOTES.md` current under `# Unreleased` whenever a change should appear in the GitHub release body or MCPViews update changelog. Bumping `manifest.json.version` on `master` triggers the release workflow; prerelease versions such as `0.1.1-rc.1` publish as GitHub prereleases.

@@ -1,6 +1,6 @@
 const DEFAULT_MCP_URL = "http://127.0.0.1:4877/mcp";
 const TOOL_NAME = "relay-probe";
-const PREFIXED_TOOL_NAME = "tribe-x-ai-plugin__relay-probe";
+const PREFIXED_TOOL_NAME = "tribe_x_persona_studio__relay-probe";
 
 function readMcpUrl() {
   return String(process.env.TRIBEX_RELAY_PROBE_MCP_URL || DEFAULT_MCP_URL).trim();
@@ -50,8 +50,8 @@ async function relayProbeExecutor(request, context) {
 export const toolExecutors = {
   [TOOL_NAME]: relayProbeExecutor,
   [PREFIXED_TOOL_NAME]: relayProbeExecutor,
-  "tribe-x-ai-plugin:relay-probe": relayProbeExecutor,
-  "tribe-x-ai-plugin.relay-probe": relayProbeExecutor,
+  "tribe-x-persona-studio:relay-probe": relayProbeExecutor,
+  "tribe-x-persona-studio.relay-probe": relayProbeExecutor,
 };
 
 export default toolExecutors;

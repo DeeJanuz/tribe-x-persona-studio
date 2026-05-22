@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-PLUGIN_NAME="tribe-x-ai-plugin"
+PLUGIN_NAME="tribe-x-persona-studio"
 ZIP_NAME="${PLUGIN_NAME}.zip"
 RELEASE_DIR="release"
 BUILD_DIR=".build"
-REPO_URL="https://github.com/deejanus/tribe-x-ai-plugin"
+REPO_URL="https://github.com/DeeJanuz/tribe-x-persona-studio"
 
 echo "Building ${ZIP_NAME}..."
 

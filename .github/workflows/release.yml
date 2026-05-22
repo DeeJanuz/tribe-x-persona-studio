@@ -49,7 +49,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.current }}"
           NOTES=$(sed '1{/^# Unreleased$/d;}' RELEASE_NOTES.md | sed '/^$/d')
-          RELEASE_ARGS=(gh release create "$VERSION" release/tribe-x-ai-plugin.zip --title "$VERSION")
+          RELEASE_ARGS=(gh release create "$VERSION" release/tribe-x-persona-studio.zip --title "$VERSION")
           if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
             RELEASE_ARGS+=(--prerelease)
           fi

@@ -24,8 +24,8 @@ _(No tests yet. Tests will be documented here as they are created.)_
 
 ### MCPViews Relay Probe
 
-- Tool key for Persona Studio registration: `tribe-x-ai-plugin.relay-probe`
-- Runtime relay tool name: `tribe-x-ai-plugin__relay-probe`
+- Tool key for Persona Studio registration: `tribe-x-persona-studio.relay-probe`
+- Runtime relay tool name: `tribe_x_persona_studio__relay-probe`
 - Local MCP endpoint: `http://127.0.0.1:4877/mcp`
 - Start command from this repository: `node tools/relay-probe-server.mjs`
 - Headless relay executor for `scripts/persona-dev-run.ts`: `tools/relay-probe-executors.mjs`

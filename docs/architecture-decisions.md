@@ -100,41 +100,42 @@ The first phase will:
 - Summary generation remains intentionally scaffolded in the first milestone
 - Per-run configurability is designed to expand beyond model and prompt overrides later
 
-### ADR-004: Extract Tribe-X AI from MCPViews Core into a Closed Plugin
+### ADR-004: Extract Tribe-X Persona Studio into a Public MCPViews Plugin
 **Date:** 2026-04-17
 **Status:** Proposed
 **Deciders:** Tribe-X architecture team
 
 #### Context
-The current Tribe-X AI experience is implemented directly inside MCPViews core even though the feature set, hosted integrations, and runtime behavior are part of a closed system. That mixes open-source platform code with product-specific code and makes the MCPViews plugin story less credible because the most advanced experience is still special-cased in core.
+The Persona Studio experience needs to be distributed independently of MCPViews core while still using MCPViews as the host shell and first-party AI bridge.
 
 We want the installed user experience to remain functionally the same, including:
-- Dedicated AI entry in the MCPViews chrome
-- Persistent left-rail AI workspace and thread flow
-- Hosted AI thread rendering, artifact handling, and local-tool integrations
+- Dedicated Persona Studio entry in MCPViews
+- Consultant-scoped persona authoring
+- Save-first single-run and parallel evaluation workflows
 
 #### Decision
-Extract the Tribe-X AI feature into a closed plugin repository and evolve MCPViews with generic plugin host capabilities instead of AI-specific core behavior.
+Extract Persona Studio into a public plugin repository and evolve MCPViews with generic plugin host capabilities instead of Persona Studio-specific core behavior.
 
 The target split is:
-- **MCPViews core:** generic plugin loading, plugin chrome hooks, plugin sidebar mounting, local MCP bridges, and neutral session/rendering infrastructure
-- **Tribe-X AI plugin:** AI shell UI, thread renderer, auth flow, hosted backend integration, and planning/implementation artifacts
+- **MCPViews core:** generic plugin loading, standalone renderer mounting, local MCP bridges, and neutral session/rendering infrastructure
+- **Tribe-X Persona Studio plugin:** Persona Studio UI, hosted backend integration through the first-party AI bridge, relay probe tooling, and planning/release artifacts
 
 #### Rationale
 **Why this direction:**
 - Preserves the open-source boundary for MCPViews
+- Makes Persona Studio installable from the public registry
 - Makes the plugin model real instead of aspirational
-- Lets Tribe-X ship private AI capabilities independently of MCPViews releases
+- Lets TribeX ship Persona Studio improvements independently of MCPViews releases
 - Keeps future platform improvements reusable for other plugins
 
 **Alternatives considered:**
-1. Keep AI native in MCPViews core
-2. Repackage current AI code as a nominal plugin while retaining AI-specific host code in core
-3. Remove the AI experience from MCPViews entirely
+1. Keep Persona Studio native in MCPViews core
+2. Repackage Persona Studio as a nominal plugin while retaining Studio-specific host code in core
+3. Remove Persona Studio from MCPViews entirely
 
 #### Consequences
 **Positive:**
-- Clear product and licensing boundary
+- Clear product and plugin boundary
 - Cleaner MCPViews architecture
 - Better long-term maintainability for both repos
 - Reusable host APIs for future advanced plugins

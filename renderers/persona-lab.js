@@ -266,6 +266,41 @@
     return true;
   }
 
+  function selectedConsultantOrganizationId(state) {
+    return state.organizationKind === 'CONSULTANT' && state.organizationId
+      ? state.organizationId
+      : '';
+  }
+
+  function hasConsultantOrganizationContext(state) {
+    return Boolean(selectedConsultantOrganizationId(state));
+  }
+
+  function consultantOrganizationRequiredMessage(state) {
+    if (!state.organizationId) {
+      return 'Select a consultant organization before opening Persona Studio.';
+    }
+    return 'Persona Studio authoring is available only for consultant organizations. Select a consultant organization to create and edit personas.';
+  }
+
+  function personaAuthoringQuery(state, extra) {
+    var query = Object.assign({}, ensureObject(extra));
+    var organizationId = selectedConsultantOrganizationId(state);
+    if (organizationId) {
+      query.organizationId = organizationId;
+    }
+    return Object.keys(query).length ? query : null;
+  }
+
+  function requireConsultantOrganizationContext(state) {
+    if (hasConsultantOrganizationContext(state)) {
+      return true;
+    }
+    setError(state, consultantOrganizationRequiredMessage(state));
+    renderState(state);
+    return false;
+  }
+
   function ensureStyles() {
     var globalState = getGlobalState();
     if (globalState.stylesInjected || document.getElementById('parallel-run-workshop-theme')) {
@@ -1711,14 +1746,7 @@
     if (state.organizationKind === 'CONSULTANT' && state.organizationId) {
       return state.organizationId;
     }
-    var assetRegistry = assetRegistryForState(state);
-    var consultantContext = ensureObject(assetRegistry.consultantContext);
-    return String(
-      consultantContext.consultantOrganizationId ||
-      consultantContext.organizationId ||
-      consultantContext.id ||
-      ''
-    ).trim();
+    return '';
   }
 
   function buildManualPluginManifestUrl(connectorKey) {
@@ -1828,23 +1856,7 @@
       })
       .then(function (result) {
         toolAssetId = result && result.asset && result.asset.id ? result.asset.id : null;
-        if (state.organizationId === consultantOrganizationId) {
-          return null;
-        }
-        return request(
-          'POST',
-          '/organizations/' + encodeURIComponent(consultantOrganizationId) + '/persona-studio/install-grants',
-          {
-            customerOrganizationId: state.organizationId,
-            pluginPackageId: packageId,
-            connectorKeys: [connectorKey],
-            runtimeToolIds: [runtimeToolId],
-            expiresAt: null,
-            metadata: Object.assign({}, registrationMetadata, {
-              registeredToolKeys: [parsedKey.toolKey],
-            }),
-          }
-        );
+        return null;
       })
       .then(function () {
         var enablements = [connectorAssetId, toolAssetId]
@@ -2479,6 +2491,21 @@
 
   function fetchBootstrap(state) {
     syncOrganizationContext(state);
+    if (!hasConsultantOrganizationContext(state)) {
+      state.loading = false;
+      state.bootstrapLoaded = true;
+      state.bootstrapPromise = null;
+      state.personas = [];
+      state.personaFolders = [];
+      state.registries = null;
+      state.assetRegistry = null;
+      state.current = null;
+      state.form = null;
+      state.dirty = false;
+      setError(state, consultantOrganizationRequiredMessage(state));
+      renderState(state);
+      return Promise.resolve(null);
+    }
     if (state.bootstrapPromise) {
       return state.bootstrapPromise;
     }
@@ -2518,7 +2545,7 @@
   }
 
   function refreshAssetRegistry(state) {
-    if (!state.organizationId) {
+    if (!hasConsultantOrganizationContext(state)) {
       return Promise.resolve(null);
     }
     var query = state.showArchivedPersonas ? { includeArchived: 'true' } : null;
@@ -2544,6 +2571,9 @@
     if (!personaKey) {
       return Promise.resolve(null);
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
+    }
     state.loadingPersona = true;
     state.selectedPersonaKey = personaKey;
     state.navScrollTargetKey = personaKey;
@@ -2552,7 +2582,12 @@
     state.skillEditorDraft = '';
     state.skillEditorError = '';
     renderState(state);
-    state.personaPromise = request('GET', '/admin/persona-studio/personas/' + encodeURIComponent(personaKey))
+    state.personaPromise = request(
+      'GET',
+      '/admin/persona-studio/personas/' + encodeURIComponent(personaKey),
+      null,
+      personaAuthoringQuery(state)
+    )
       .then(function (detail) {
         state.current = detail;
         state.form = buildEditableForm(detail);
@@ -2622,9 +2657,7 @@
   }
 
   function registerCustomMcpTool(state) {
-    if (!state.organizationId) {
-      setError(state, 'Select an organization before registering a tool.');
-      renderState(state);
+    if (!requireConsultantOrganizationContext(state)) {
       return;
     }
     if (!state.form || !state.form.draft) {
@@ -2700,6 +2733,9 @@
     if (!state.current || !state.selectedPersonaKey || !state.form) {
       return Promise.reject(new Error('No persona is selected.'));
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
+    }
     var workflowModels;
     try {
       workflowModels = parseWorkflowModels(renderJson(state.form.draft.modelPolicy.workflowModels));
@@ -2714,6 +2750,7 @@
     renderState(state);
 
     var payload = clone(state.form);
+    payload.organizationId = selectedConsultantOrganizationId(state);
     payload.draft.modelPolicy.workflowModels = workflowModels;
     payload.draft.orchestration = normalizeOrchestration(payload.draft.orchestration);
     payload.customSkills = ensureArray(payload.customSkills).map(serializeCustomSkillForSave);
@@ -2730,7 +2767,8 @@
     return request(
       'PUT',
       '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey),
-      payload
+      payload,
+      personaAuthoringQuery(state)
     )
       .then(function (validation) {
         state.current = Object.assign({}, state.current || {}, { validation: validation });
@@ -3148,6 +3186,9 @@
       renderState(state);
       return Promise.reject(new Error('No persona selected.'));
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
+    }
 
     state.testing = true;
     setStatus(state, state.dirty ? 'Saving draft before launching test...' : 'Launching workshop test...');
@@ -3161,8 +3202,9 @@
           '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-runs',
           {
             sourceStage: 'draft',
-            organizationId: state.organizationId || undefined,
-          }
+            organizationId: selectedConsultantOrganizationId(state),
+          },
+          personaAuthoringQuery(state)
         );
       })
       .then(function (payload) {
@@ -3213,7 +3255,7 @@
 
     return {
       sourceStage: 'draft',
-      organizationId: state.organizationId || undefined,
+      organizationId: selectedConsultantOrganizationId(state),
       runCount: draft.runCount,
       summaryScaffold: {
         enabled: true,
@@ -3234,6 +3276,9 @@
       setError(state, 'Select a persona before launching parallel runs.');
       renderState(state);
       return Promise.reject(new Error('No persona selected.'));
+    }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
     }
 
     var payload;
@@ -3261,7 +3306,8 @@
         return request(
           'POST',
           '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-batches',
-          payload
+          payload,
+          personaAuthoringQuery(state)
         );
       })
       .then(function (response) {
@@ -3449,6 +3495,9 @@
     if (!state.selectedPersonaKey || state.archivingPersona || state.deleteConfirmSubmitting) {
       return;
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return;
+    }
     var definition = currentPersonaDefinition(state);
     if (definition.status === 'ARCHIVED' || definition.archivedAt) {
       return;
@@ -3489,7 +3538,11 @@
     return request(
       'POST',
       '/admin/persona-studio/personas/' + encodeURIComponent(archivedKey) + '/archive',
-      { reason: reason }
+      {
+        reason: reason,
+        organizationId: selectedConsultantOrganizationId(state),
+      },
+      personaAuthoringQuery(state)
     )
       .then(function () {
         state.archiveConfirmModalOpen = false;
@@ -3515,6 +3568,9 @@
     if (!state.selectedPersonaKey || state.archivingPersona || state.deleteConfirmSubmitting) {
       return Promise.resolve(null);
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.resolve(null);
+    }
     var definition = currentPersonaDefinition(state);
     var label = definition.displayName || state.selectedPersonaKey;
     var restoredKey = state.selectedPersonaKey;
@@ -3523,7 +3579,9 @@
     renderState(state);
     return request(
       'POST',
-      '/admin/persona-studio/personas/' + encodeURIComponent(restoredKey) + '/unarchive'
+      '/admin/persona-studio/personas/' + encodeURIComponent(restoredKey) + '/unarchive',
+      null,
+      personaAuthoringQuery(state)
     )
       .then(function () {
         setStatus(state, 'Restored ' + label + '.');
@@ -3568,6 +3626,9 @@
     if (!state.selectedPersonaKey || state.deleteConfirmSubmitting) {
       return Promise.resolve(null);
     }
+    if (!requireConsultantOrganizationContext(state)) {
+      return Promise.resolve(null);
+    }
     if (!isCurrentPersonaArchived(state)) {
       state.deleteConfirmError = 'Only archived personas can be deleted.';
       renderState(state);
@@ -3586,7 +3647,12 @@
     state.deleteConfirmError = '';
     setStatus(state, 'Deleting ' + label + '...');
     renderState(state);
-    return request('DELETE', '/admin/persona-studio/personas/' + encodeURIComponent(key))
+    return request(
+      'DELETE',
+      '/admin/persona-studio/personas/' + encodeURIComponent(key),
+      null,
+      personaAuthoringQuery(state)
+    )
       .then(function () {
         state.deleteConfirmModalOpen = false;
         state.deleteConfirmDraft = defaultDeleteConfirmDraft();
@@ -3627,6 +3693,9 @@
   }
 
   function openCreatePersonaModal(state, metadataGroup) {
+    if (!requireConsultantOrganizationContext(state)) {
+      return;
+    }
     var folder = normalizePersonaFolderLabel(metadataGroup);
     if (folder === UNGROUPED_PERSONA_GROUP) {
       folder = '';
@@ -3699,8 +3768,8 @@
       displayName: displayName,
       description: description,
       metadataGroup: metadataGroup,
-      organizationId: state.organizationId || undefined,
-    })
+      organizationId: selectedConsultantOrganizationId(state),
+    }, personaAuthoringQuery(state))
       .then(function (payload) {
         var nextKey = (payload && payload.definition && payload.definition.key) || key;
         state.personaFolders = mergePersonaFolderLabels(state.personaFolders, [metadataGroup]);
@@ -3724,6 +3793,9 @@
   }
 
   function openCreateFolderModal(state) {
+    if (!requireConsultantOrganizationContext(state)) {
+      return;
+    }
     state.folderDraft = defaultPersonaFolderDraft();
     state.folderCreateError = '';
     state.folderCreateModalOpen = true;
@@ -5223,6 +5295,7 @@
 
   function buildNav(state) {
     var nav = createEl('aside', 'persona-lab-nav');
+    var canAuthor = hasConsultantOrganizationContext(state);
     var header = createEl('div', 'persona-lab-nav-header');
     var copy = createEl('div');
     copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
@@ -5233,7 +5306,7 @@
     header.appendChild(copy);
     var createButton = createEl('button', 'persona-lab-button small', 'New persona');
     createButton.type = 'button';
-    createButton.disabled = Boolean(state.showArchivedPersonas);
+    createButton.disabled = Boolean(state.showArchivedPersonas) || !canAuthor;
     createButton.addEventListener('click', function () {
       openCreatePersonaModal(state, '');
     });
@@ -5248,6 +5321,7 @@
       'Active'
     );
     activeModeButton.type = 'button';
+    activeModeButton.disabled = !canAuthor;
     activeModeButton.addEventListener('click', function () {
       toggleArchivedPersonas(state, false);
     });
@@ -5257,6 +5331,7 @@
       'View archive'
     );
     archiveModeButton.type = 'button';
+    archiveModeButton.disabled = !canAuthor;
     archiveModeButton.addEventListener('click', function () {
       toggleArchivedPersonas(state, true);
     });
@@ -5266,6 +5341,7 @@
 
     var folderButton = createEl('button', 'persona-lab-button small', 'New folder');
     folderButton.type = 'button';
+    folderButton.disabled = !canAuthor;
     folderButton.addEventListener('click', function () {
       openCreateFolderModal(state);
     });
@@ -5316,6 +5392,7 @@
           emptyFolder.appendChild(createEl('span', null, 'No personas in this folder yet.'));
           var addPersonaButton = createEl('button', 'persona-lab-button small', 'Add persona');
           addPersonaButton.type = 'button';
+          addPersonaButton.disabled = !canAuthor;
           addPersonaButton.addEventListener('click', function () {
             openCreatePersonaModal(state, group.label);
           });
@@ -6818,6 +6895,12 @@
     var content = createEl('div', 'persona-lab-content');
     if (state.loading || state.loadingPersona) {
       content.appendChild(createEl('div', 'persona-lab-empty', 'Loading Persona Studio…'));
+      shell.appendChild(content);
+      return shell;
+    }
+
+    if (!hasConsultantOrganizationContext(state)) {
+      content.appendChild(createEl('div', 'persona-lab-empty', consultantOrganizationRequiredMessage(state)));
       shell.appendChild(content);
       return shell;
     }

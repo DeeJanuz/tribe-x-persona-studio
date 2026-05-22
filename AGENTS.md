@@ -2,7 +2,7 @@
 
 # AGENTS.md
 
-This project inherits the global Codex rules from `/Users/daenonjanis/AGENTS.md` and `/Users/daenonjanis/projects/AGENTS.md`.
+This repository packages the public MCPViews Persona Studio plugin.
 
 ## MCPViews Session Startup
 
@@ -22,7 +22,7 @@ When the planned work is complete, update the Ludflow document with a new versio
 
 ## Release And Registry Maintenance
 
-`bash build.sh` is the canonical release-package command. It reads `manifest.json.version`, rewrites `manifest.json.download_url` to `https://github.com/deejanus/tribe-x-ai-plugin/releases/download/{version}/tribe-x-ai-plugin.zip`, and produces `release/tribe-x-ai-plugin.zip` containing `manifest.json`, `renderers/`, and `tools/`.
+`bash build.sh` is the canonical release-package command. It reads `manifest.json.version`, rewrites `manifest.json.download_url` to `https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/{version}/tribe-x-persona-studio.zip`, and produces `release/tribe-x-persona-studio.zip` containing `manifest.json`, `renderers/`, and `tools/`.
 
 When preparing a version update:
 
@@ -32,4 +32,4 @@ When preparing a version update:
 4. Validate renderer/tool syntax before publishing.
 5. Keep `../mcpviews/registry/registry.json` pointed at the repository `manifest_url`; avoid copying every new version into the registry unless registry metadata itself changes.
 
-Release candidates should use SemVer prerelease suffixes such as `0.1.17-rc.1`. The GitHub Actions release workflow treats versions containing `-` as prereleases and clears `RELEASE_NOTES.md` after publishing. Keep `docs/release-strategy.md` aligned when changing the release process.
+Release candidates should use SemVer prerelease suffixes such as `0.1.1-rc.1`. The GitHub Actions release workflow treats versions containing `-` as prereleases and clears `RELEASE_NOTES.md` after publishing. Keep `docs/release-strategy.md` aligned when changing the release process.
