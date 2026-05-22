@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-21-consultant-org-error-clear-v1';
+  var RENDERER_VERSION = '2026-05-22-default-consultant-org-compact-header-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -123,6 +123,7 @@
         organizationsPromise: null,
         organizationSelectSubmitting: false,
         organizationSelectError: '',
+        defaultConsultantOrganizationApplied: false,
         showArchivedPersonas: false,
         navGroupExpansion: {},
         personaFolders: [],
@@ -374,9 +375,18 @@
   }
 
   function consultantOrganizationOptions(state) {
-    return ensureArray(state.organizations).filter(function (organization) {
-      return organization && organization.kind === 'CONSULTANT' && organization.id;
-    });
+    return ensureArray(state.organizations)
+      .filter(function (organization) {
+        return organization && organization.kind === 'CONSULTANT' && organization.id;
+      })
+      .slice()
+      .sort(function (left, right) {
+        var leftLabel = String(left.name || left.slug || left.id || '').toLowerCase();
+        var rightLabel = String(right.name || right.slug || right.id || '').toLowerCase();
+        if (leftLabel < rightLabel) return -1;
+        if (leftLabel > rightLabel) return 1;
+        return String(left.id || '').localeCompare(String(right.id || ''));
+      });
   }
 
   function findConsultantOrganization(state, organizationId) {
@@ -410,8 +420,10 @@
         state.organizationsLoaded = true;
         state.organizationsLoading = false;
         state.organizationsPromise = null;
-        renderState(state);
-        return state.organizations;
+        return applyDefaultConsultantOrganization(state).then(function () {
+          renderState(state);
+          return state.organizations;
+        });
       })
       .catch(function (error) {
         state.organizationsLoading = false;
@@ -424,12 +436,41 @@
     return state.organizationsPromise;
   }
 
-  function selectConsultantOrganization(state, organizationId) {
+  function applyDefaultConsultantOrganization(state) {
+    if (
+      state.defaultConsultantOrganizationApplied ||
+      state.organizationSelectSubmitting ||
+      state.dirty
+    ) {
+      return Promise.resolve(false);
+    }
+    var organization =
+      findConsultantOrganization(state, state.organizationId) ||
+      consultantOrganizationOptions(state)[0];
+    if (!organization) {
+      return Promise.resolve(false);
+    }
+    state.defaultConsultantOrganizationApplied = true;
+    return selectConsultantOrganization(state, organization.id, { silent: true })
+      .then(function () {
+        return true;
+      })
+      .catch(function () {
+        state.defaultConsultantOrganizationApplied = false;
+        return false;
+      });
+  }
+
+  function selectConsultantOrganization(state, organizationId, options) {
+    var selectOptions = ensureObject(options);
     var organization = findConsultantOrganization(state, organizationId);
     if (!organization) {
       state.organizationSelectError = 'Choose a consultant organization.';
       renderState(state);
       return Promise.resolve(false);
+    }
+    if (!selectOptions.silent) {
+      state.defaultConsultantOrganizationApplied = true;
     }
     if (state.organizationId === organization.id && state.organizationKind === 'CONSULTANT') {
       return Promise.resolve(true);
@@ -457,9 +498,7 @@
         return fetchBootstrap(state);
       })
       .then(function () {
-        if (!state.error) {
-          setStatus(state, 'Using consultant organization: ' + organization.name + '.');
-        }
+        if (!selectOptions.silent && !state.error) setStatus(state, '');
         return true;
       })
       .catch(function (error) {
@@ -561,6 +600,7 @@
       '.persona-lab-chip-label{font-size:10px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary)}',
       '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0;padding:18px 18px 18px 0;gap:14px}',
       '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:var(--border-radius-lg);animation:persona-lab-stagger-fade-in .28s ease both}',
+      '.persona-lab-toolbar-title{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}',
       '.persona-lab-toolbar h1{margin:4px 0 0;font-size:30px;line-height:1.05;letter-spacing:0}',
       '.persona-lab-toolbar p{margin:8px 0 0;color:var(--text-secondary);max-width:760px;line-height:1.6}',
       '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
@@ -775,8 +815,9 @@
       '.persona-lab-badge{padding:2px 8px;border-radius:var(--border-radius-pill);font-size:var(--text-xs);font-weight:var(--weight-medium);line-height:var(--leading-tight);background:var(--bg-surface);color:var(--text-secondary)}',
       '.persona-lab-chip{padding:5px 10px;border-radius:var(--border-radius-pill);background:var(--bg-surface-subtle);border-color:var(--glass-border);font-size:var(--text-small);font-weight:var(--weight-medium)}',
       '.persona-lab-shell{padding:var(--space-4);gap:var(--space-4)}',
-      '.persona-lab-toolbar{padding:var(--space-4);gap:var(--space-4);border-radius:var(--border-radius-lg);align-items:flex-start;animation:persona-lab-stagger-fade-in .3s ease both}',
-      '.persona-lab-toolbar h1{margin:var(--space-1) 0 0;font-size:var(--text-h1);line-height:1.1;letter-spacing:0;font-weight:var(--weight-bold)}',
+      '.persona-lab-toolbar{padding:var(--space-3) var(--space-4);gap:var(--space-3);border-radius:var(--border-radius-lg);align-items:center;animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-toolbar-title{gap:var(--space-2)}',
+      '.persona-lab-toolbar h1{margin:0;font-size:var(--text-h2);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold);white-space:nowrap}',
       '.persona-lab-toolbar p{margin:var(--space-2) 0 0;color:var(--text-secondary);font-size:var(--text-body);line-height:var(--leading-normal)}',
       '.persona-lab-actions{gap:var(--space-2)}',
       '.persona-lab-button{border-radius:var(--border-radius-sm);padding:8px 12px;background:var(--bg-surface-subtle);font-size:var(--text-small);font-weight:var(--weight-medium);transition:border-color var(--transition-fast),background var(--transition-fast),color var(--transition-fast),opacity var(--transition-fast)}',
@@ -7024,21 +7065,11 @@
   function renderMain(state) {
     var shell = createEl('main', 'persona-lab-shell');
     var toolbar = createEl('div', 'persona-lab-toolbar');
-    var titleCopy = createEl('div');
-    titleCopy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
+    var titleCopy = createEl('div', 'persona-lab-toolbar-title');
     titleCopy.appendChild(createEl('h1', null, 'Persona Studio'));
     if (isCurrentPersonaArchived(state)) {
       titleCopy.appendChild(createEl('span', 'persona-lab-badge archived', 'Archived persona'));
     }
-    titleCopy.appendChild(
-      createEl(
-        'p',
-        null,
-        state.organizationName
-          ? 'Shape personas for ' + state.organizationName + ', choose scoped tools, and launch saved test runs from the same draft.'
-          : 'Shape the persona, choose its tools, and launch saved test runs from the same draft.'
-      )
-    );
     toolbar.appendChild(titleCopy);
 
     var actions = createEl('div', 'persona-lab-actions');

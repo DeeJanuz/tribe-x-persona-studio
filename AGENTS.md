@@ -1,4 +1,4 @@
-<!-- mcpviews-rules-version: 5 -->
+<!-- mcpviews-rules-version: 14 -->
 
 # AGENTS.md
 
