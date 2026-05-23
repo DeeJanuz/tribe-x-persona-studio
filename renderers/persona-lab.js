@@ -1423,7 +1423,7 @@
 
   function normalizeDefaultRuleOption(value, index) {
     var source = ensureObject(value);
-    var rule = String(source.rule || source.content || source.text || '').replace(/\s+/g, ' ').trim();
+    var rule = String(source.rule || source.content || source.text || '').trim();
     if (!rule) return null;
     var label = String(source.label || source.title || source.name || '').replace(/\s+/g, ' ').trim();
     var key = String(source.key || source.id || slugifyKey(label || rule, 'default-rule-' + (index + 1))).trim();
