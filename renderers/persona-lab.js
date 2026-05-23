@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-22-default-consultant-org-compact-header-v1';
+  var RENDERER_VERSION = '2026-05-23-default-rule-library-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -670,6 +670,15 @@
       '.persona-lab-textarea{min-height:110px;resize:vertical;line-height:1.55}',
       '.persona-lab-textarea.json{min-height:140px;font-family:var(--font-mono);font-size:12px}',
       '.persona-lab-rule-editor{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:12px;align-items:start}',
+      '.persona-lab-rule-sidebar{display:flex;flex-direction:column;gap:12px;min-width:0}',
+      '.persona-lab-default-rule-library{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-default-rule-library-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}',
+      '.persona-lab-default-rule-library-header strong{font-size:13px;line-height:1.35;color:var(--text-primary)}',
+      '.persona-lab-default-rule-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-default-rule-card-copy{display:flex;flex-direction:column;gap:6px;min-width:0}',
+      '.persona-lab-default-rule-card-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}',
+      '.persona-lab-default-rule-card-title strong{font-size:13px;line-height:1.35;color:var(--text-primary)}',
+      '.persona-lab-default-rule-card p{margin:0;font-size:12px;line-height:1.45;color:var(--text-secondary)}',
       '.persona-lab-rule-list{display:flex;flex-direction:column;gap:8px}',
       '.persona-lab-rule-item{appearance:none;width:100%;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle);color:var(--text-primary);padding:10px 12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:5px;transition:border-color .15s ease,background .15s ease}',
       '.persona-lab-rule-item:hover,.persona-lab-rule-item.active{border-color:var(--accent-primary);background:var(--bg-surface)}',
@@ -793,7 +802,7 @@
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
       '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row,.persona-lab-skill-meta-grid{grid-template-columns:1fr}}',
-      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}}',
+      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}.persona-lab-default-rule-card{grid-template-columns:1fr}.persona-lab-default-rule-card .persona-lab-button{justify-self:start}}',
       '.persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--border-radius-sm:4px;--border-radius-md:8px;--border-radius-lg:12px;--border-radius-pill:999px;--text-h1:24px;--text-h2:20px;--text-h3:16px;--text-body:14px;--text-small:12px;--text-xs:11px;--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--leading-tight:1.3;--leading-normal:1.6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--transition-fast:.15s ease;--transition-normal:.25s ease;--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2);background:var(--bg-app);font-size:var(--text-body);line-height:var(--leading-normal)}',
       '@media (prefers-color-scheme: light){.persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}}',
       'html[data-theme="light"] .persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}',
@@ -840,7 +849,7 @@
       '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider,.persona-lab-model-provider-toggle{border-radius:var(--border-radius-md)}',
       '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface-hover)}',
       '.persona-lab-model-empty.active,.persona-lab-model-option.active,.persona-lab-step.active{background:var(--accent-primary-ghost)}',
-      '.persona-lab-rule-item,.persona-lab-tool-group,.persona-lab-variable-row,.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-empty,.persona-lab-run-card,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card,.persona-lab-summary-banner{border-radius:var(--border-radius-md)}',
+      '.persona-lab-rule-item,.persona-lab-default-rule-library,.persona-lab-default-rule-card,.persona-lab-tool-group,.persona-lab-variable-row,.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-empty,.persona-lab-run-card,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card,.persona-lab-summary-banner{border-radius:var(--border-radius-md)}',
       '.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card{background:var(--bg-surface-subtle)}',
       '.persona-lab-choice:hover,.persona-lab-tool-row:hover,.persona-lab-rule-item:hover,.persona-lab-rule-item.active{background:var(--bg-surface-hover);border-color:var(--accent-primary)}',
       '.persona-lab-details-body{padding:var(--space-4);border-top-color:var(--glass-border)}',
@@ -1410,6 +1419,49 @@
       })
       .filter(Boolean);
     return assets.length ? assets : fallbackItems;
+  }
+
+  function normalizeDefaultRuleOption(value, index) {
+    var source = ensureObject(value);
+    var rule = String(source.rule || source.content || source.text || '').replace(/\s+/g, ' ').trim();
+    if (!rule) return null;
+    var label = String(source.label || source.title || source.name || '').replace(/\s+/g, ' ').trim();
+    var key = String(source.key || source.id || slugifyKey(label || rule, 'default-rule-' + (index + 1))).trim();
+    return {
+      key: key,
+      label: label || 'Default rule ' + (index + 1),
+      description: String(source.description || '').replace(/\s+/g, ' ').trim(),
+      category: String(source.category || source.group || 'Platform').replace(/\s+/g, ' ').trim(),
+      rule: rule,
+    };
+  }
+
+  function defaultRuleOptionsForState(state) {
+    var registries = activeRegistries(state);
+    var assetRegistry = assetRegistryForState(state, registries);
+    var sourceRules = ensureArray(registries.defaultRules).concat(
+      ensureArray(assetRegistry.defaultRules)
+    );
+    var seen = {};
+    return sourceRules
+      .map(function (rule, index) {
+        return normalizeDefaultRuleOption(rule, index);
+      })
+      .filter(function (rule) {
+        if (!rule) return false;
+        var key = rule.key || rule.rule.toLowerCase();
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
+  }
+
+  function ruleIndexByText(rules, text) {
+    var normalized = String(text || '').trim();
+    if (!normalized) return -1;
+    return ensureArray(rules).findIndex(function (rule) {
+      return String(rule || '').trim() === normalized;
+    });
   }
 
   function isRegisteredRuntimeAsset(asset) {
@@ -4806,6 +4858,56 @@
     syncRuleEditorState(state);
     var rules = ensureArray(state.form.draft.rules);
     var wrapper = createEl('div', 'persona-lab-rule-editor');
+    var sidebar = createEl('div', 'persona-lab-rule-sidebar');
+    var defaultRules = defaultRuleOptionsForState(state);
+    if (defaultRules.length) {
+      var library = createEl('div', 'persona-lab-default-rule-library');
+      var libraryHeader = createEl('div', 'persona-lab-default-rule-library-header');
+      libraryHeader.appendChild(createEl('strong', null, 'Default Rule Library'));
+      libraryHeader.appendChild(createEl('span', 'persona-lab-badge', String(defaultRules.length)));
+      library.appendChild(libraryHeader);
+      defaultRules.forEach(function (defaultRule) {
+        var defaultRuleCard = createEl('div', 'persona-lab-default-rule-card');
+        var defaultRuleCopy = createEl('div', 'persona-lab-default-rule-card-copy');
+        var defaultRuleTitle = createEl('div', 'persona-lab-default-rule-card-title');
+        defaultRuleTitle.appendChild(createEl('strong', null, defaultRule.label));
+        if (defaultRule.category) {
+          defaultRuleTitle.appendChild(createEl('span', 'persona-lab-badge', defaultRule.category));
+        }
+        defaultRuleCopy.appendChild(defaultRuleTitle);
+        defaultRuleCopy.appendChild(
+          createEl('p', null, defaultRule.description || compactRuleText(defaultRule.rule))
+        );
+        defaultRuleCard.appendChild(defaultRuleCopy);
+
+        var existingIndex = ruleIndexByText(rules, defaultRule.rule);
+        var useRule = createEl(
+          'button',
+          'persona-lab-button small',
+          existingIndex >= 0 ? 'Added' : 'Use rule'
+        );
+        useRule.type = 'button';
+        useRule.disabled = existingIndex >= 0;
+        useRule.addEventListener('click', function () {
+          var currentRules = ensureArray(state.form && state.form.draft && state.form.draft.rules);
+          var currentIndex = ruleIndexByText(currentRules, defaultRule.rule);
+          if (currentIndex >= 0) {
+            state.ruleEditorIndex = currentIndex;
+            state.ruleEditorDraft = currentRules[currentIndex] || '';
+            renderState(state);
+            return;
+          }
+          state.form.draft.rules = currentRules.concat([defaultRule.rule]);
+          state.ruleEditorIndex = state.form.draft.rules.length - 1;
+          state.ruleEditorDraft = defaultRule.rule;
+          updateDirtyState(state);
+          renderState(state);
+        });
+        defaultRuleCard.appendChild(useRule);
+        library.appendChild(defaultRuleCard);
+      });
+      sidebar.appendChild(library);
+    }
     var ruleList = createEl('div', 'persona-lab-rule-list');
 
     if (!rules.length) {
@@ -4829,6 +4931,7 @@
         ruleList.appendChild(item);
       });
     }
+    sidebar.appendChild(ruleList);
 
     var controls = createEl('div', 'persona-lab-rule-controls');
     var editor = createEl('textarea', 'persona-lab-textarea');
@@ -4893,7 +4996,7 @@
     actions.appendChild(deleteRule);
     controls.appendChild(actions);
 
-    wrapper.appendChild(ruleList);
+    wrapper.appendChild(sidebar);
     wrapper.appendChild(controls);
     return wrapper;
   }
