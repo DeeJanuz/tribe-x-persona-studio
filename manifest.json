@@ -1,8 +1,18 @@
 {
   "name": "tribe-x-persona-studio",
-  "version": "0.1.1-rc.3",
-  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.3/tribe-x-persona-studio.zip",
+  "version": "0.1.1-rc.4",
+  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.4/tribe-x-persona-studio.zip",
   "renderers": {
+    "persona-studio-open": "persona_lab",
+    "list-personas": "rich_content",
+    "get-persona": "rich_content",
+    "create-persona": "rich_content",
+    "update-persona": "rich_content",
+    "archive-persona": "rich_content",
+    "unarchive-persona": "rich_content",
+    "list-test-suites": "rich_content",
+    "create-test-suite": "rich_content",
+    "run-test-suite": "rich_content",
     "relay-probe": "rich_content"
   },
   "mcp": {
@@ -13,7 +23,7 @@
   "renderer_definitions": [
     {
       "name": "persona_lab",
-      "description": "Standalone Persona Studio for editing consultant-scoped TribeX AI personas against the Cloudflare dev control plane and launching save-first single-run and parallel run batches.",
+      "description": "Standalone Persona Studio for editing consultant-scoped TribeX AI personas against the Cloudflare dev control plane and launching save-first single-run, parallel run, and synthetic test-suite evaluations.",
       "scope": "universal",
       "data_hint": "{}",
       "display_mode": "replace",
@@ -22,7 +32,7 @@
     }
   ],
   "registry_index": {
-    "summary": "Standalone consultant-scoped Persona Studio for editing TribeX AI personas through the Cloudflare dev control plane and launching native MCPViews single-run and parallel run test chats.",
+    "summary": "Standalone consultant-scoped Persona Studio for editing TribeX AI personas through the Cloudflare dev control plane and launching native MCPViews single-run, parallel run, and synthetic test-suite evaluations.",
     "tags": [
       "persona",
       "ai",
@@ -31,6 +41,28 @@
       "cloudflare-dev"
     ],
     "tool_groups": [
+      {
+        "name": "Persona Authoring",
+        "hint": "List, create, update, archive, and restore consultant-owned Persona Studio personas through the dev control plane.",
+        "tools": [
+          "persona-studio-open",
+          "list-personas",
+          "get-persona",
+          "create-persona",
+          "update-persona",
+          "archive-persona",
+          "unarchive-persona"
+        ]
+      },
+      {
+        "name": "Persona Test Suites",
+        "hint": "Create, list, and run synthetic test suites for consultant-owned personas.",
+        "tools": [
+          "list-test-suites",
+          "create-test-suite",
+          "run-test-suite"
+        ]
+      },
       {
         "name": "Relay Tests",
         "hint": "Deterministic local probe for verifying that Persona Studio grants can call MCPViews plugin tools through the desktop relay.",
@@ -44,11 +76,22 @@
     ]
   },
   "tool_rules": {
+    "persona-studio-open": "Return a payload for opening the Persona Studio renderer.",
+    "list-personas": "Use to discover consultant-owned personas. Requires a consultant organizationId and an authenticated dev control-plane cookie or bearer token supplied by the MCP host/environment.",
+    "get-persona": "Fetch the full persona document before editing. Use the returned definition, draft, prompt, and customSkills as the base for update-persona.",
+    "create-persona": "Create a consultant-owned draft persona through Persona Studio. Requires organizationId, key, and displayName.",
+    "update-persona": "Save a persona draft through Persona Studio. Fetch first, then submit the complete definition, draft, prompt, and customSkills payload.",
+    "archive-persona": "Archive a consultant-owned persona through Persona Studio. This is a destructive visibility change; ask for confirmation when the request is ambiguous.",
+    "unarchive-persona": "Restore an archived consultant-owned persona through Persona Studio.",
+    "list-test-suites": "List synthetic test suites for a persona in the selected consultant organization.",
+    "create-test-suite": "Create a synthetic test suite with cases containing prompts and checks. Requires organizationId, personaKey, and name.",
+    "run-test-suite": "Launch a synthetic suite run for an existing Persona Studio test suite.",
     "relay-probe": "Use only for Persona Studio and MCPViews relay integration tests. Pass a unique marker and ask the tool to echo it back so the operator can verify the plugin relay path."
   },
   "plugin_rules": [
-    "Persona Studio is a standalone consultant-only authoring renderer that targets the TribeX AI Cloudflare dev control plane at https://dev.app.tribexai.com through MCPViews first-party AI configuration. It reads the currently selected native AI organization, requires that organization to have kind CONSULTANT, scopes every Persona Studio authoring call to that consultant organization, and launches save-first native AI single-run and parallel run batches in that organization.",
+    "Persona Studio is a standalone consultant-only authoring renderer that targets the TribeX AI Cloudflare dev control plane at https://dev.app.tribexai.com through MCPViews first-party AI configuration. It reads the currently selected native AI organization, requires that organization to have kind CONSULTANT, scopes every Persona Studio authoring call to that consultant organization, and launches save-first native AI single-run, parallel run, and synthetic test-suite evaluations in that organization.",
     "Persona Studio is for creating and editing consultant-owned personas. Child organization assignment and enablement management remain outside this renderer in consultant/customer management flows.",
+    "Persona Studio MCP tools are thin control-plane proxies. They must call the Persona Studio API with the selected consultant organization and authenticated control-plane context; they must not manipulate the database directly or use Wrangler.",
     "The relay-probe tool is a local deterministic MCP tool for end-to-end testing of consultant-owned plugin relay grants. It requires tools/relay-probe-server.mjs to be running on http://127.0.0.1:4877/mcp."
   ]
 }

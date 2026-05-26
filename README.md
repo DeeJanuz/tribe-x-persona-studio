@@ -10,7 +10,7 @@ This repository packages the standalone Persona Studio renderer for MCPViews. It
 
 - Keep Persona Studio as a consultant-only authoring surface for creating and editing consultant-owned personas
 - Require the selected native AI organization to have kind `CONSULTANT`
-- Launch save-first single-run and parallel persona tests in the selected consultant organization
+- Launch save-first single-run, parallel persona tests, and synthetic consultant test suites in the selected consultant organization
 - Keep Persona Studio aligned with TribeX AI persona tooling metadata, including orchestration controls, dynamically discovered business tools, and priced model catalog choices
 
 ## Initial Scope
@@ -35,6 +35,14 @@ bash build.sh
 ```
 
 The build reads `manifest.json.version`, synchronizes `manifest.json.download_url`, and writes `release/tribe-x-persona-studio.zip` for MCPViews registry installation.
+
+## Tests
+
+```bash
+pnpm install
+pnpm run check
+pnpm test
+```
 
 ## Release Notes
 

@@ -1,0 +1,14 @@
+{
+  "name": "tribe-x-persona-studio",
+  "version": "0.1.1-rc.4",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "check": "node --check renderers/persona-lab.js && node --check tools/relay-probe-server.mjs && node --check tools/relay-probe-executors.mjs"
+  },
+  "devDependencies": {
+    "happy-dom": "^17.6.3",
+    "vitest": "^4.1.4"
+  }
+}

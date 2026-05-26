@@ -10,7 +10,10 @@ This document maps all test files to their corresponding source code and describ
 
 ## Unit Tests
 
-_(No tests yet. Tests will be documented here as they are created.)_
+- `test/persona-lab.test.js`
+  - Boots the standalone `persona_lab` renderer in happy-dom.
+  - Verifies the Test Suites tab renders consultant-safe suite content without legacy `tribe-x-ai-plugin` naming.
+  - Verifies background suite run launch payloads include the selected consultant organization and that manual review/report state is displayed.
 
 ---
 
@@ -31,3 +34,10 @@ _(No tests yet. Tests will be documented here as they are created.)_
 - Headless relay executor for `scripts/persona-dev-run.ts`: `tools/relay-probe-executors.mjs`
 
 The probe echoes a caller-provided `marker` and optional `message`. Use it to validate that a consultant-owned MCPViews plugin tool can be registered in Persona Studio, selected on a persona, surfaced in the session-start relay catalog, and called through the desktop relay.
+
+---
+
+## Syntax Checks
+
+- `pnpm run check`
+  - Runs `node --check` against `renderers/persona-lab.js`, `tools/relay-probe-server.mjs`, and `tools/relay-probe-executors.mjs`.

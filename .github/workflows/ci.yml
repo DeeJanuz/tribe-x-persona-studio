@@ -12,14 +12,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
       - name: Validate manifest JSON
         run: python3 -m json.tool manifest.json >/dev/null
 
       - name: Check JavaScript syntax
-        run: |
-          node --check renderers/persona-lab.js
-          node --check tools/relay-probe-server.mjs
-          node --check tools/relay-probe-executors.mjs
+        run: pnpm run check
+
+      - name: Run renderer tests
+        run: pnpm test
 
       - name: Build release package
         run: bash build.sh

@@ -5,7 +5,7 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-23-default-rule-library-v1';
+  var RENDERER_VERSION = '2026-05-23-test-suites-v1';
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -31,7 +31,23 @@
     PARTIAL_FAILED: true,
     CANCELLED: true,
   };
+  var TERMINAL_SUITE_RUN_STATUSES = {
+    SUCCEEDED: true,
+    FAILED: true,
+    PARTIAL_FAILED: true,
+    NEEDS_REVIEW: true,
+    CANCELLED: true,
+  };
   var BATCH_STORAGE_KEY = '__personaLabBatchState';
+  var PERSONA_EDITOR_WIZARD_STEPS = [
+    { key: 'overview', eyebrow: 'Step 1', label: 'Overview' },
+    { key: 'instructions', eyebrow: 'Step 2', label: 'Instructions' },
+    { key: 'runtime', eyebrow: 'Step 3', label: 'Runtime' },
+    { key: 'skills', eyebrow: 'Step 4', label: 'Skills' },
+    { key: 'review', eyebrow: 'Step 5', label: 'Review & Test' },
+    { key: 'test-suites', eyebrow: 'Step 6', label: 'Test Suites' },
+    { key: 'insights', eyebrow: 'Step 7', label: 'Insights' },
+  ];
   var modelSelectorSequence = 0;
 
   function getGlobalState() {
@@ -105,6 +121,46 @@
     };
   }
 
+  function defaultSuiteDraft() {
+    return {
+      name: 'Customer-safe acceptance',
+      description: '',
+      releaseNotes: '',
+    };
+  }
+
+  function defaultSuiteCaseDraft() {
+    return {
+      title: 'Synthetic scenario',
+      targetSkillKey: '',
+      prompt: '',
+      checksText: renderJson([
+        {
+          type: 'tool_called',
+          label: 'Uses required tool',
+          toolName: 'push_review',
+          minCalls: 1,
+        },
+        {
+          type: 'tool_outcome',
+          label: 'Required tool succeeds',
+          toolName: 'push_review',
+          allowedStatuses: ['success', 'needs_review'],
+        },
+      ]),
+    };
+  }
+
+  function defaultInsightsFilters() {
+    var now = new Date();
+    return {
+      month: now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'),
+      customerOrganizationId: '',
+      model: '',
+      workspaceId: '',
+    };
+  }
+
   function getSessionState() {
     var globalState = getGlobalState();
     var sessionId = currentSessionId();
@@ -124,6 +180,7 @@
         organizationSelectSubmitting: false,
         organizationSelectError: '',
         defaultConsultantOrganizationApplied: false,
+        navCollapsed: false,
         showArchivedPersonas: false,
         navGroupExpansion: {},
         personaFolders: [],
@@ -161,6 +218,8 @@
         current: null,
         form: null,
         dirty: false,
+        personaWizardStep: 'overview',
+        resetContentScrollOnRender: false,
         status: '',
         error: '',
         saving: false,
@@ -181,6 +240,29 @@
         batchPollTimer: null,
         batchAutoOpenTimer: null,
         submittingBatchPromptRunIds: {},
+        testSuites: [],
+        testSuitesLoadedPersonaKey: '',
+        testSuitesLoading: false,
+        testSuitesError: '',
+        testSuiteLimits: null,
+        selectedTestSuiteId: '',
+        suiteDraft: defaultSuiteDraft(),
+        suiteSaving: false,
+        suiteCaseDraft: defaultSuiteCaseDraft(),
+        suiteCaseSaving: false,
+        suiteRunLaunching: false,
+        suiteRunDetails: null,
+        suiteRunPollTimer: null,
+        reviewingCaseRunIds: {},
+        insights: null,
+        insightsLoading: false,
+        insightsError: '',
+        insightsLoadedKey: '',
+        insightsFilters: defaultInsightsFilters(),
+        optimizationDraftModalOpen: false,
+        optimizationDraftOpportunity: null,
+        optimizationDraftSubmitting: false,
+        optimizationDraftError: '',
         runDetailOpen: false,
         runDetailLoading: false,
         runDetailError: '',
@@ -198,6 +280,7 @@
         chromeKey: '',
         ruleEditorIndex: -1,
         ruleEditorDraft: '',
+        defaultRuleLibraryOpen: false,
         skillEditorOpen: false,
         skillEditorIndex: -1,
         skillEditorDraft: '',
@@ -300,6 +383,8 @@
     state.deleteConfirmDraft = defaultDeleteConfirmDraft();
     state.deleteConfirmSubmitting = false;
     state.deleteConfirmError = '';
+    resetTestSuitesState(state);
+    resetInsightsState(state);
     clearSelectedPersona(state);
     clearConsultantOrganizationContextError(state);
     return true;
@@ -551,6 +636,9 @@
       '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
       '.persona-lab-nav{padding:18px;display:flex;flex-direction:column;gap:14px;height:100%;min-height:0;overflow:hidden;background:var(--glass-bg-heavy)}',
       '.persona-lab-nav-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}',
+      '.persona-lab-nav-copy{min-width:0}',
+      '.persona-lab-nav-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+      '.persona-lab-nav-toggle{width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
       '.persona-lab-nav-controls{display:flex;flex-direction:column;align-items:stretch;gap:10px}',
       '.persona-lab-nav-controls>.persona-lab-button{width:100%}',
       '.persona-lab-org-selector{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
@@ -601,6 +689,7 @@
       '.persona-lab-shell{display:flex;flex-direction:column;min-width:0;min-height:0;padding:18px 18px 18px 0;gap:14px}',
       '.persona-lab-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 22px;border-radius:var(--border-radius-lg);animation:persona-lab-stagger-fade-in .28s ease both}',
       '.persona-lab-toolbar-title{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}',
+      '.persona-lab-toolbar-persona-name{display:inline-flex;align-items:center;min-width:0;max-width:min(520px,58vw);padding-left:10px;border-left:1px solid var(--glass-border);color:var(--text-secondary);font-size:18px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.persona-lab-toolbar h1{margin:4px 0 0;font-size:30px;line-height:1.05;letter-spacing:0}',
       '.persona-lab-toolbar p{margin:8px 0 0;color:var(--text-secondary);max-width:760px;line-height:1.6}',
       '.persona-lab-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
@@ -617,6 +706,15 @@
       '.persona-lab-status:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-info-bg);border:1px solid rgba(59,130,246,.18);color:var(--color-info-text)}',
       '.persona-lab-error:not(:empty){padding:12px 14px;border-radius:14px;background:var(--color-error-bg);border:1px solid rgba(239,68,68,.2);color:var(--color-error-text)}',
       '.persona-lab-content{overflow:auto;padding:2px 0 16px 0;display:flex;flex-direction:column;gap:18px;min-height:0}',
+      '.persona-lab-root [hidden]{display:none!important}',
+      '.persona-lab-editor-stepper{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:8px;border:1px solid var(--border-default);border-radius:var(--border-radius-lg);background:var(--bg-surface-subtle)}',
+      '.persona-lab-editor-step{appearance:none;min-height:54px;border:1px solid transparent;border-radius:var(--border-radius-md);padding:8px 10px;background:transparent;color:var(--text-secondary);text-align:left;cursor:pointer;transition:border-color .15s ease,background .15s ease,color .15s ease}',
+      '.persona-lab-editor-step:hover:not(:disabled){border-color:var(--border-default);background:var(--bg-surface);color:var(--text-primary)}',
+      '.persona-lab-editor-step.active{border-color:rgba(129,140,248,.42);background:var(--accent-primary-ghost);color:var(--text-primary)}',
+      '.persona-lab-editor-step span{display:block;font-size:var(--text-xs);font-weight:var(--weight-semibold);color:var(--text-tertiary);line-height:1.2}',
+      '.persona-lab-editor-step strong{display:block;margin-top:2px;font-size:var(--text-small);font-weight:var(--weight-semibold);line-height:1.2;color:inherit}',
+      '.persona-lab-wizard-panel{display:flex;flex-direction:column;gap:18px;min-width:0}',
+      '.persona-lab-wizard-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--glass-border);border-radius:var(--border-radius-lg);background:var(--bg-surface-subtle);flex-wrap:wrap}',
       '.persona-lab-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}',
       '.persona-lab-panel{border-radius:var(--border-radius-lg);padding:18px;display:flex;flex-direction:column;gap:14px;animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-panel.compact{gap:10px}',
@@ -672,8 +770,11 @@
       '.persona-lab-rule-editor{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr);gap:12px;align-items:start}',
       '.persona-lab-rule-sidebar{display:flex;flex-direction:column;gap:12px;min-width:0}',
       '.persona-lab-default-rule-library{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
-      '.persona-lab-default-rule-library-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}',
+      '.persona-lab-default-rule-library-header{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;cursor:pointer}',
+      '.persona-lab-default-rule-library-header::-webkit-details-marker{display:none}',
       '.persona-lab-default-rule-library-header strong{font-size:13px;line-height:1.35;color:var(--text-primary)}',
+      '.persona-lab-default-rule-library-title{display:flex;align-items:center;gap:8px;min-width:0}',
+      '.persona-lab-default-rule-library-body{display:flex;flex-direction:column;gap:8px}',
       '.persona-lab-default-rule-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--glass-border);border-radius:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-default-rule-card-copy{display:flex;flex-direction:column;gap:6px;min-width:0}',
       '.persona-lab-default-rule-card-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}',
@@ -772,6 +873,14 @@
       '.persona-lab-run-metric,.persona-lab-metric-card{border-radius:16px;padding:12px;background:var(--bg-surface-subtle)}',
       '.persona-lab-run-metric span,.persona-lab-metric-card span{display:block;font-size:11px;letter-spacing:0;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:6px;font-weight:700}',
       '.persona-lab-run-metric strong,.persona-lab-metric-card strong{display:block;font-size:18px;line-height:1.15;color:var(--text-primary)}',
+      '.persona-lab-insights-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end}',
+      '.persona-lab-insights-table{display:flex;flex-direction:column;gap:8px}',
+      '.persona-lab-insights-row{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(4,minmax(86px,.6fr));gap:10px;align-items:center;padding:10px;border:1px solid var(--glass-border);border-radius:var(--border-radius-md);background:var(--bg-surface-subtle)}',
+      '.persona-lab-insights-row strong{font-size:var(--text-small);line-height:1.3}',
+      '.persona-lab-insights-row span{font-size:var(--text-small);color:var(--text-secondary)}',
+      '.persona-lab-opportunity-card{border-left:3px solid rgba(129,140,248,.65)}',
+      '.persona-lab-opportunity-card.high{border-left-color:rgba(239,68,68,.82)}',
+      '.persona-lab-opportunity-card.medium{border-left-color:rgba(245,158,11,.82)}',
       '.persona-lab-run-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
       '.persona-lab-run-actions-copy{display:flex;flex-direction:column;gap:4px;min-width:180px}',
       '.persona-lab-run-actions-buttons{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
@@ -801,14 +910,19 @@
       '.persona-lab-drawer-header h2{margin:4px 0 0;font-size:22px;line-height:1.1;letter-spacing:0}',
       '.persona-lab-drawer-header p{margin:8px 0 0;color:var(--text-secondary);line-height:1.6}',
       '.persona-lab-drawer-body{padding:18px 22px 24px;overflow:auto;display:flex;flex-direction:column;gap:16px}',
-      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr}.persona-lab-nav{margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding-left:18px}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row,.persona-lab-skill-meta-grid{grid-template-columns:1fr}}',
-      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}.persona-lab-default-rule-card{grid-template-columns:1fr}.persona-lab-default-rule-card .persona-lab-button{justify-self:start}}',
+      '@media (max-width: 1100px){.persona-lab-root{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:auto}.persona-lab-nav{height:auto;min-height:0;max-height:360px;margin:18px 18px 0;border-radius:var(--border-radius-lg)}.persona-lab-nav-list{flex:0 1 auto;max-height:210px}.persona-lab-shell{min-height:auto;padding:18px}.persona-lab-content{overflow:visible;min-height:auto}.persona-lab-grid,.persona-lab-stepper,.persona-lab-rule-editor,.persona-lab-variable-row,.persona-lab-skill-meta-grid{grid-template-columns:1fr}}',
+      '@media (max-width: 820px){.persona-lab-overlay{padding:12px}.persona-lab-modal{max-height:92vh}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:16px;padding-right:16px}.persona-lab-nav{max-height:320px}.persona-lab-run-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-toolbar{flex-direction:column}.persona-lab-shell{padding-top:0}.persona-lab-model-menu{max-height:52vh}.persona-lab-default-rule-card{grid-template-columns:1fr}.persona-lab-default-rule-card .persona-lab-button{justify-self:start}.persona-lab-editor-stepper{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-lab-wizard-footer{align-items:flex-start}}',
       '.persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--border-radius-sm:4px;--border-radius-md:8px;--border-radius-lg:12px;--border-radius-pill:999px;--text-h1:24px;--text-h2:20px;--text-h3:16px;--text-body:14px;--text-small:12px;--text-xs:11px;--weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;--leading-tight:1.3;--leading-normal:1.6;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--transition-fast:.15s ease;--transition-normal:.25s ease;--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2);background:var(--bg-app);font-size:var(--text-body);line-height:var(--leading-normal)}',
       '@media (prefers-color-scheme: light){.persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}}',
       'html[data-theme="light"] .persona-lab-root{--text-secondary:rgba(0,0,0,0.6);--text-tertiary:rgba(0,0,0,0.38);--accent-primary-ghost:rgba(99,102,241,0.1);--scrollbar-thumb:rgba(0,0,0,.15);--scrollbar-thumb-hover:rgba(0,0,0,.25)}',
       'html[data-theme="dark"] .persona-lab-root{--text-secondary:rgba(255,255,255,0.6);--text-tertiary:rgba(255,255,255,0.35);--accent-primary-ghost:rgba(129,140,248,0.1);--scrollbar-thumb:rgba(255,255,255,.12);--scrollbar-thumb-hover:rgba(255,255,255,.2)}',
+      '.persona-lab-root.nav-collapsed{grid-template-columns:72px minmax(0,1fr)}',
       '.persona-lab-nav,.persona-lab-panel,.persona-lab-run-card,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-metric-card,.persona-lab-run-metric,.persona-lab-summary-banner,.persona-lab-review-item,.persona-lab-choice,.persona-lab-toolbar,.persona-lab-modal,.persona-lab-drawer{background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--glass-shadow),var(--glass-inset-highlight)}',
       '.persona-lab-nav{padding:var(--space-4);gap:var(--space-3);border-radius:0;border-width:0 1px 0 0;background:var(--glass-bg-heavy)}',
+      '.persona-lab-root.nav-collapsed .persona-lab-nav{align-items:center;padding:var(--space-3);gap:0}',
+      '.persona-lab-root.nav-collapsed .persona-lab-nav-header{justify-content:center;width:100%}',
+      '.persona-lab-root.nav-collapsed .persona-lab-nav-header-actions{justify-content:center}',
+      '.persona-lab-root.nav-collapsed .persona-lab-nav-copy,.persona-lab-root.nav-collapsed .persona-lab-nav-action,.persona-lab-root.nav-collapsed .persona-lab-nav-controls,.persona-lab-root.nav-collapsed .persona-lab-nav-list{display:none}',
       '.persona-lab-nav-title,.persona-lab-field label,.persona-lab-run-eyebrow,.persona-lab-chip-label,.persona-lab-kv-item span,.persona-lab-metric-card span,.persona-lab-run-metric span,.persona-lab-rule-item span,.persona-lab-model-trigger-provider,.persona-lab-model-provider-toggle{letter-spacing:0;font-size:var(--text-xs);font-weight:var(--weight-semibold)}',
       '.persona-lab-nav-header strong{font-size:var(--text-h3);line-height:var(--leading-tight);font-weight:var(--weight-semibold)}',
       '.persona-lab-nav-list{scrollbar-color:var(--scrollbar-thumb) transparent}',
@@ -826,6 +940,7 @@
       '.persona-lab-shell{padding:var(--space-4);gap:var(--space-4)}',
       '.persona-lab-toolbar{padding:var(--space-3) var(--space-4);gap:var(--space-3);border-radius:var(--border-radius-lg);align-items:center;animation:persona-lab-stagger-fade-in .3s ease both}',
       '.persona-lab-toolbar-title{gap:var(--space-2)}',
+      '.persona-lab-toolbar-persona-name{font-size:var(--text-h3);font-weight:var(--weight-medium)}',
       '.persona-lab-toolbar h1{margin:0;font-size:var(--text-h2);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold);white-space:nowrap}',
       '.persona-lab-toolbar p{margin:var(--space-2) 0 0;color:var(--text-secondary);font-size:var(--text-body);line-height:var(--leading-normal)}',
       '.persona-lab-actions{gap:var(--space-2)}',
@@ -872,8 +987,8 @@
       '.persona-lab-drawer{background:var(--bg-app);box-shadow:-8px 0 32px rgba(0,0,0,.3)}',
       '.persona-lab-drawer-header{padding:var(--space-4);border-color:var(--glass-border)}',
       '.persona-lab-drawer-body{padding:var(--space-4);gap:var(--space-4)}',
-      '@media (max-width:1100px){.persona-lab-nav{margin:var(--space-4) var(--space-4) 0;border-width:1px;border-radius:var(--border-radius-lg)}.persona-lab-shell{padding:var(--space-4)}}',
-      '@media (max-width:820px){.persona-lab-toolbar{flex-direction:column}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:var(--space-4);padding-right:var(--space-4)}}',
+      '@media (max-width:1100px){.persona-lab-root.nav-collapsed{grid-template-columns:1fr}.persona-lab-nav{height:min(360px,48vh);min-height:0;max-height:min(360px,48vh);overflow-y:auto;margin:var(--space-4) var(--space-4) 0;border-width:1px;border-radius:var(--border-radius-lg)}.persona-lab-root.nav-collapsed .persona-lab-nav{height:64px;min-height:64px;max-height:64px;overflow:hidden}.persona-lab-shell{padding:var(--space-4)}}',
+      '@media (max-width:820px){.persona-lab-toolbar{flex-direction:column;align-items:stretch}.persona-lab-toolbar-persona-name{max-width:100%;padding-left:0;border-left:none}.persona-lab-nav{height:min(320px,44vh);max-height:min(320px,44vh)}.persona-lab-modal-header,.persona-lab-modal-body,.persona-lab-modal-footer,.persona-lab-drawer-header,.persona-lab-drawer-body{padding-left:var(--space-4);padding-right:var(--space-4)}}',
     ].join('');
     document.head.appendChild(style);
   }
@@ -1014,6 +1129,39 @@
     }
   }
 
+  function resetTestSuitesState(state) {
+    if (!state) return;
+    if (state.suiteRunPollTimer) {
+      window.clearInterval(state.suiteRunPollTimer);
+      state.suiteRunPollTimer = null;
+    }
+    state.testSuites = [];
+    state.testSuitesLoadedPersonaKey = '';
+    state.testSuitesLoading = false;
+    state.testSuitesError = '';
+    state.testSuiteLimits = null;
+    state.selectedTestSuiteId = '';
+    state.suiteDraft = defaultSuiteDraft();
+    state.suiteSaving = false;
+    state.suiteCaseDraft = defaultSuiteCaseDraft();
+    state.suiteCaseSaving = false;
+    state.suiteRunLaunching = false;
+    state.suiteRunDetails = null;
+    state.reviewingCaseRunIds = {};
+  }
+
+  function resetInsightsState(state) {
+    if (!state) return;
+    state.insights = null;
+    state.insightsLoading = false;
+    state.insightsError = '';
+    state.insightsLoadedKey = '';
+    state.optimizationDraftModalOpen = false;
+    state.optimizationDraftOpportunity = null;
+    state.optimizationDraftSubmitting = false;
+    state.optimizationDraftError = '';
+  }
+
   function renderJson(value) {
     try {
       return JSON.stringify(value, null, 2);
@@ -1034,6 +1182,24 @@
     if (ms < 1000) return Math.round(ms) + ' ms';
     if (ms < 60 * 1000) return (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + ' s';
     return (ms / 60000).toFixed(ms >= 10 * 60000 ? 0 : 1) + ' min';
+  }
+
+  function formatMoneyCents(value) {
+    var cents = Number(value || 0);
+    if (!Number.isFinite(cents)) cents = 0;
+    var dollars = cents / 100;
+    return dollars.toLocaleString(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: dollars >= 10 ? 0 : 2,
+      maximumFractionDigits: dollars >= 10 ? 0 : 2,
+    });
+  }
+
+  function formatPercent(value) {
+    var numeric = Number(value || 0);
+    if (!Number.isFinite(numeric)) numeric = 0;
+    return Math.round(numeric * 100) + '%';
   }
 
   function formatStatusLabel(value) {
@@ -1294,6 +1460,30 @@
     if (className) el.className = className;
     if (text !== undefined && text !== null) el.textContent = text;
     return el;
+  }
+
+  function personaEditorStepIndex(stepKey) {
+    var normalized = String(stepKey || '');
+    for (var index = 0; index < PERSONA_EDITOR_WIZARD_STEPS.length; index += 1) {
+      if (PERSONA_EDITOR_WIZARD_STEPS[index].key === normalized) {
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  function normalizePersonaEditorStep(stepKey) {
+    return PERSONA_EDITOR_WIZARD_STEPS[personaEditorStepIndex(stepKey)].key;
+  }
+
+  function setPersonaEditorStep(state, stepKey) {
+    var nextStep = normalizePersonaEditorStep(stepKey);
+    if (state.personaWizardStep === nextStep) return;
+    state.personaWizardStep = nextStep;
+    state.resetContentScrollOnRender = true;
+    state.contentScrollAnchorKey = '';
+    state.contentScrollAnchorTop = 0;
+    renderState(state);
   }
 
   function bindInput(input, handler) {
@@ -2343,9 +2533,20 @@
     window.requestAnimationFrame(function () {
       var content = state.container.querySelector('.persona-lab-content');
       if (content) {
-        content.scrollTop = state.contentScrollTop || 0;
-        content.scrollLeft = state.contentScrollLeft || 0;
-        if (state.contentScrollAnchorKey) {
+        var resetContentScroll = state.resetContentScrollOnRender;
+        if (resetContentScroll) {
+          content.scrollTop = 0;
+          content.scrollLeft = 0;
+          state.contentScrollTop = 0;
+          state.contentScrollLeft = 0;
+          state.contentScrollAnchorKey = '';
+          state.contentScrollAnchorTop = 0;
+          state.resetContentScrollOnRender = false;
+        } else {
+          content.scrollTop = state.contentScrollTop || 0;
+          content.scrollLeft = state.contentScrollLeft || 0;
+        }
+        if (!resetContentScroll && state.contentScrollAnchorKey) {
           var anchor = content.querySelector('[data-persona-scroll-anchor="' + cssEscape(state.contentScrollAnchorKey) + '"]');
           if (anchor) {
             content.scrollTop += anchor.getBoundingClientRect().top - state.contentScrollAnchorTop;
@@ -2861,6 +3062,10 @@
     if (!requireConsultantOrganizationContext(state)) {
       return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
     }
+    if (state.selectedPersonaKey !== personaKey) {
+      resetTestSuitesState(state);
+      resetInsightsState(state);
+    }
     state.loadingPersona = true;
     state.selectedPersonaKey = personaKey;
     state.navScrollTargetKey = personaKey;
@@ -2868,6 +3073,8 @@
     state.skillEditorIndex = -1;
     state.skillEditorDraft = '';
     state.skillEditorError = '';
+    state.personaWizardStep = 'overview';
+    state.resetContentScrollOnRender = true;
     renderState(state);
     state.personaPromise = request(
       'GET',
@@ -3027,6 +3234,8 @@
     try {
       workflowModels = parseWorkflowModels(renderJson(state.form.draft.modelPolicy.workflowModels));
     } catch (error) {
+      state.personaWizardStep = 'runtime';
+      state.resetContentScrollOnRender = true;
       setError(state, stringifyError(error));
       renderState(state);
       return Promise.reject(error);
@@ -3046,6 +3255,8 @@
     if (customSkillErrors.length) {
       var validationError = new Error(customSkillErrors.join('\n'));
       state.saving = false;
+      state.personaWizardStep = 'skills';
+      state.resetContentScrollOnRender = true;
       setError(state, validationError.message);
       renderState(state);
       return Promise.reject(validationError);
@@ -3436,6 +3647,13 @@
     clearBatchAutoOpenTimer(state);
   }
 
+  function stopSuiteRunPolling(state) {
+    if (state.suiteRunPollTimer) {
+      window.clearInterval(state.suiteRunPollTimer);
+      state.suiteRunPollTimer = null;
+    }
+  }
+
   function startPolling(state, runId) {
     stopPolling(state);
     if (!runId) return;
@@ -3465,6 +3683,403 @@
         })
         .catch(function () {});
     }, 2500);
+  }
+
+  function startSuiteRunPolling(state, runId) {
+    stopSuiteRunPolling(state);
+    if (!runId) return;
+    state.suiteRunPollTimer = window.setInterval(function () {
+      fetchTestSuiteRun(state, runId)
+        .then(function (payload) {
+          var suiteRun = payload && payload.suiteRun;
+          var status = suiteRun && suiteRun.status;
+          if (status && TERMINAL_SUITE_RUN_STATUSES[status]) {
+            stopSuiteRunPolling(state);
+          }
+        })
+        .catch(function () {});
+    }, 3000);
+  }
+
+  function selectedTestSuite(state) {
+    var suites = ensureArray(state.testSuites);
+    return suites.find(function (suite) {
+      return suite && suite.id === state.selectedTestSuiteId;
+    }) || suites[0] || null;
+  }
+
+  function fetchTestSuites(state) {
+    if (!state.selectedPersonaKey || !requireConsultantOrganizationContext(state)) {
+      return Promise.resolve(null);
+    }
+    state.testSuitesLoading = true;
+    state.testSuitesError = '';
+    renderState(state);
+    return request(
+      'GET',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-suites',
+      null,
+      personaAuthoringQuery(state)
+    )
+      .then(function (payload) {
+        state.testSuites = ensureArray(payload && payload.suites);
+        state.testSuiteLimits = payload && payload.limits ? payload.limits : null;
+        state.testSuitesLoadedPersonaKey = state.selectedPersonaKey;
+        if (!selectedTestSuite(state) && state.testSuites[0]) {
+          state.selectedTestSuiteId = state.testSuites[0].id;
+        }
+        if (selectedTestSuite(state) && !state.selectedTestSuiteId) {
+          state.selectedTestSuiteId = selectedTestSuite(state).id;
+        }
+        state.testSuitesLoading = false;
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        state.testSuitesLoading = false;
+        state.testSuitesError = stringifyError(error);
+        state.testSuitesLoadedPersonaKey = state.selectedPersonaKey;
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function insightsQuery(state) {
+    var filters = ensureObject(state.insightsFilters);
+    var query = {
+      organizationId: selectedConsultantOrganizationId(state),
+    };
+    ['month', 'customerOrganizationId', 'model', 'workspaceId'].forEach(function (key) {
+      var value = String(filters[key] || '').trim();
+      if (value) query[key] = value;
+    });
+    return query;
+  }
+
+  function insightsLoadKey(state) {
+    return JSON.stringify({
+      organizationId: selectedConsultantOrganizationId(state),
+      personaKey: state.selectedPersonaKey || '',
+      filters: insightsQuery(state),
+    });
+  }
+
+  function fetchInsights(state) {
+    if (!state.selectedPersonaKey || !requireConsultantOrganizationContext(state)) {
+      return Promise.resolve(null);
+    }
+    var key = insightsLoadKey(state);
+    state.insightsLoading = true;
+    state.insightsError = '';
+    renderState(state);
+    return request(
+      'GET',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/observability',
+      null,
+      insightsQuery(state)
+    )
+      .then(function (payload) {
+        state.insights = payload || null;
+        state.insightsLoadedKey = key;
+        state.insightsLoading = false;
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        state.insightsLoading = false;
+        state.insightsError = stringifyError(error);
+        state.insightsLoadedKey = key;
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function openOptimizationDraftModal(state, opportunity) {
+    state.optimizationDraftOpportunity = opportunity || null;
+    state.optimizationDraftModalOpen = Boolean(opportunity);
+    state.optimizationDraftError = '';
+    renderState(state);
+  }
+
+  function applyOptimizationDraft(state) {
+    var opportunity = state.optimizationDraftOpportunity;
+    if (!opportunity || !opportunity.draftAction) {
+      state.optimizationDraftError = 'Choose an optimization suggestion before creating a draft.';
+      renderState(state);
+      return Promise.reject(new Error(state.optimizationDraftError));
+    }
+    if (!state.selectedPersonaKey || !requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error(consultantOrganizationRequiredMessage(state)));
+    }
+    state.optimizationDraftSubmitting = true;
+    state.optimizationDraftError = '';
+    setStatus(state, 'Creating optimization draft...');
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/optimization-drafts',
+      {
+        organizationId: selectedConsultantOrganizationId(state),
+        opportunityId: opportunity.id || null,
+        action: opportunity.draftAction,
+      },
+      personaAuthoringQuery(state)
+    )
+      .then(function () {
+        state.optimizationDraftSubmitting = false;
+        state.optimizationDraftModalOpen = false;
+        state.optimizationDraftOpportunity = null;
+        setStatus(state, 'Optimization draft saved.');
+        return loadPersona(state, state.selectedPersonaKey)
+          .then(function () {
+            state.personaWizardStep = 'insights';
+            return fetchInsights(state).catch(function () { return null; });
+          });
+      })
+      .catch(function (error) {
+        state.optimizationDraftSubmitting = false;
+        state.optimizationDraftError = stringifyError(error);
+        setError(state, state.optimizationDraftError);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function parseSuiteChecks(text) {
+    var parsed = JSON.parse(text || '[]');
+    if (!Array.isArray(parsed)) {
+      throw new Error('Checks must be a JSON array.');
+    }
+    return parsed;
+  }
+
+  function appendSuiteCheckTemplate(state, template) {
+    var draft = state.suiteCaseDraft || defaultSuiteCaseDraft();
+    var checks;
+    try {
+      checks = parseSuiteChecks(draft.checksText);
+    } catch (error) {
+      checks = [];
+    }
+    checks.push(template);
+    draft.checksText = renderJson(checks);
+    state.suiteCaseDraft = draft;
+    renderState(state);
+  }
+
+  function skillContractOptions(state) {
+    var options = [];
+    var seen = {};
+    function add(key, label, group) {
+      key = String(key || '').trim();
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      options.push({
+        key: key,
+        label: String(label || key),
+        group: String(group || 'Skills'),
+      });
+    }
+    var draft = ensureObject(state.form && state.form.draft);
+    var registries = ensureObject(state.registries);
+    ensureArray(draft.builtInSkills).forEach(function (key) { add(key, key, 'Selected shared skills'); });
+    ensureArray(state.form && state.form.customSkills).forEach(function (skill) {
+      add(skill.key, skill.title || skill.key, 'Custom skills');
+    });
+    ensureArray(registries.builtInSkills).forEach(function (skill) {
+      var item = ensureObject(skill);
+      add(item.key || item.name, item.label || item.title || item.name || item.key, 'Shared skills');
+    });
+    return options.sort(function (left, right) {
+      return left.label.localeCompare(right.label);
+    });
+  }
+
+  function createTestSuite(state) {
+    if (!state.selectedPersonaKey || !requireConsultantOrganizationContext(state)) {
+      return Promise.reject(new Error('Select a consultant persona before creating a suite.'));
+    }
+    var draft = state.suiteDraft || defaultSuiteDraft();
+    var caseDraft = state.suiteCaseDraft || defaultSuiteCaseDraft();
+    var cases = [];
+    if (String(caseDraft.prompt || '').trim()) {
+      var parsedChecks;
+      try {
+        parsedChecks = parseSuiteChecks(caseDraft.checksText);
+      } catch (error) {
+        state.testSuitesError = stringifyError(error);
+        renderState(state);
+        return Promise.reject(error);
+      }
+      cases.push({
+        targetSkillKey: String(caseDraft.targetSkillKey || '').trim() || null,
+        title: String(caseDraft.title || 'Synthetic scenario').trim(),
+        prompt: String(caseDraft.prompt || '').trim(),
+        scenarioKind: 'synthetic',
+        checks: parsedChecks,
+      });
+    }
+    state.suiteSaving = true;
+    state.testSuitesError = '';
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/personas/' + encodeURIComponent(state.selectedPersonaKey) + '/test-suites',
+      {
+        organizationId: selectedConsultantOrganizationId(state),
+        sourceStage: 'draft',
+        name: String(draft.name || 'Customer-safe acceptance').trim(),
+        description: String(draft.description || '').trim(),
+        releaseNotes: String(draft.releaseNotes || '').trim(),
+        cases: cases,
+      }
+    )
+      .then(function (payload) {
+        state.suiteSaving = false;
+        state.suiteDraft = defaultSuiteDraft();
+        state.suiteCaseDraft = defaultSuiteCaseDraft();
+        if (payload && payload.suite && payload.suite.id) {
+          state.selectedTestSuiteId = payload.suite.id;
+        }
+        setStatus(state, 'Test suite saved.');
+        return fetchTestSuites(state);
+      })
+      .catch(function (error) {
+        state.suiteSaving = false;
+        state.testSuitesError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function saveSuiteCase(state, suiteId) {
+    var draft = state.suiteCaseDraft || defaultSuiteCaseDraft();
+    var prompt = String(draft.prompt || '').trim();
+    if (!prompt) {
+      state.testSuitesError = 'Add a synthetic prompt before saving a case.';
+      renderState(state);
+      return Promise.reject(new Error(state.testSuitesError));
+    }
+    state.suiteCaseSaving = true;
+    state.testSuitesError = '';
+    var parsedChecks;
+    try {
+      parsedChecks = parseSuiteChecks(draft.checksText);
+    } catch (error) {
+      state.suiteCaseSaving = false;
+      state.testSuitesError = stringifyError(error);
+      renderState(state);
+      return Promise.reject(error);
+    }
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/test-suites/' + encodeURIComponent(suiteId) + '/cases',
+      {
+        organizationId: selectedConsultantOrganizationId(state),
+        title: String(draft.title || 'Synthetic scenario').trim(),
+        targetSkillKey: String(draft.targetSkillKey || '').trim() || null,
+        prompt: prompt,
+        scenarioKind: 'synthetic',
+        checks: parsedChecks,
+      }
+    )
+      .then(function () {
+        state.suiteCaseSaving = false;
+        state.suiteCaseDraft = defaultSuiteCaseDraft();
+        setStatus(state, 'Synthetic case saved.');
+        return fetchTestSuites(state);
+      })
+      .catch(function (error) {
+        state.suiteCaseSaving = false;
+        state.testSuitesError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function launchTestSuiteRun(state, suiteId) {
+    if (!suiteId) return Promise.resolve(null);
+    state.suiteRunLaunching = true;
+    state.testSuitesError = '';
+    setStatus(state, state.dirty ? 'Saving draft before launching suite...' : 'Launching test suite...');
+    renderState(state);
+    var savePromise = state.dirty ? savePersona(state) : Promise.resolve();
+    return Promise.resolve(savePromise)
+      .then(function () {
+        return request(
+          'POST',
+          '/admin/persona-studio/test-suites/' + encodeURIComponent(suiteId) + '/runs',
+          {
+            organizationId: selectedConsultantOrganizationId(state),
+          }
+        );
+      })
+      .then(function (payload) {
+        state.suiteRunLaunching = false;
+        state.suiteRunDetails = payload;
+        setStatus(state, 'Test suite launched in the background.');
+        var runId = payload && payload.suiteRun && payload.suiteRun.id;
+        if (runId) startSuiteRunPolling(state, runId);
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        state.suiteRunLaunching = false;
+        state.testSuitesError = stringifyError(error);
+        setError(state, state.testSuitesError);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function fetchTestSuiteRun(state, runId) {
+    if (!runId) return Promise.resolve(null);
+    return request(
+      'GET',
+      '/admin/persona-studio/test-suite-runs/' + encodeURIComponent(runId),
+      null,
+      personaAuthoringQuery(state)
+    )
+      .then(function (payload) {
+        state.suiteRunDetails = payload;
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        state.testSuitesError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
+  }
+
+  function reviewSuiteCaseRun(state, caseRunId, decision) {
+    if (!caseRunId || state.reviewingCaseRunIds[caseRunId]) {
+      return Promise.resolve(null);
+    }
+    state.reviewingCaseRunIds[caseRunId] = true;
+    renderState(state);
+    return request(
+      'POST',
+      '/admin/persona-studio/test-case-runs/' + encodeURIComponent(caseRunId) + '/review',
+      {
+        organizationId: selectedConsultantOrganizationId(state),
+        decision: decision,
+      }
+    )
+      .then(function (payload) {
+        delete state.reviewingCaseRunIds[caseRunId];
+        state.suiteRunDetails = payload;
+        setStatus(state, 'Manual review saved.');
+        renderState(state);
+        return payload;
+      })
+      .catch(function (error) {
+        delete state.reviewingCaseRunIds[caseRunId];
+        state.testSuitesError = stringifyError(error);
+        renderState(state);
+        throw error;
+      });
   }
 
   function testPersona(state) {
@@ -3716,6 +4331,7 @@
     state.batchLaunches = [];
     state.batchLaunchSummary = null;
     state.submittingBatchPromptRunIds = {};
+    resetTestSuitesState(state);
     state.current = null;
     state.form = null;
     state.dirty = false;
@@ -4303,6 +4919,71 @@
     parent.appendChild(row);
   }
 
+  function renderPersonaEditorStepper(state) {
+    var activeStep = normalizePersonaEditorStep(state.personaWizardStep);
+    var stepper = createEl('div', 'persona-lab-editor-stepper');
+    stepper.setAttribute('role', 'tablist');
+    stepper.setAttribute('aria-label', 'Persona build steps');
+    PERSONA_EDITOR_WIZARD_STEPS.forEach(function (step) {
+      var button = createEl(
+        'button',
+        'persona-lab-editor-step' + (step.key === activeStep ? ' active' : '')
+      );
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', step.key === activeStep ? 'true' : 'false');
+      button.setAttribute('aria-controls', 'persona-lab-step-' + step.key);
+      button.appendChild(createEl('span', null, step.eyebrow));
+      button.appendChild(createEl('strong', null, step.label));
+      button.addEventListener('click', function () {
+        setPersonaEditorStep(state, step.key);
+      });
+      stepper.appendChild(button);
+    });
+    return stepper;
+  }
+
+  function createPersonaWizardPanel(state, stepKey) {
+    var activeStep = normalizePersonaEditorStep(state.personaWizardStep);
+    var panel = createEl('div', 'persona-lab-wizard-panel');
+    panel.id = 'persona-lab-step-' + stepKey;
+    panel.setAttribute('role', 'tabpanel');
+    panel.hidden = stepKey !== activeStep;
+    return panel;
+  }
+
+  function renderPersonaWizardFooter(state) {
+    var activeStep = normalizePersonaEditorStep(state.personaWizardStep);
+    var index = personaEditorStepIndex(activeStep);
+    var step = PERSONA_EDITOR_WIZARD_STEPS[index];
+    var footer = createEl('div', 'persona-lab-wizard-footer');
+    var copy = createEl('div');
+    copy.appendChild(createEl('strong', null, step.eyebrow + ' of ' + PERSONA_EDITOR_WIZARD_STEPS.length));
+    copy.appendChild(createEl('div', 'persona-lab-helper', step.label));
+    footer.appendChild(copy);
+
+    var actions = createEl('div', 'persona-lab-actions');
+    if (index > 0) {
+      var backButton = createEl('button', 'persona-lab-button', 'Back');
+      backButton.type = 'button';
+      backButton.addEventListener('click', function () {
+        setPersonaEditorStep(state, PERSONA_EDITOR_WIZARD_STEPS[index - 1].key);
+      });
+      actions.appendChild(backButton);
+    }
+    if (index < PERSONA_EDITOR_WIZARD_STEPS.length - 1) {
+      var nextStep = PERSONA_EDITOR_WIZARD_STEPS[index + 1];
+      var nextButton = createEl('button', 'persona-lab-button primary', 'Next: ' + nextStep.label);
+      nextButton.type = 'button';
+      nextButton.addEventListener('click', function () {
+        setPersonaEditorStep(state, nextStep.key);
+      });
+      actions.appendChild(nextButton);
+    }
+    footer.appendChild(actions);
+    return footer;
+  }
+
   function renderFieldGroup(parent, label, input, helpText) {
     var field = createEl('div', 'persona-lab-field');
     var labelRow = createEl('div', 'persona-lab-field-label-row');
@@ -4861,11 +5542,19 @@
     var sidebar = createEl('div', 'persona-lab-rule-sidebar');
     var defaultRules = defaultRuleOptionsForState(state);
     if (defaultRules.length) {
-      var library = createEl('div', 'persona-lab-default-rule-library');
-      var libraryHeader = createEl('div', 'persona-lab-default-rule-library-header');
-      libraryHeader.appendChild(createEl('strong', null, 'Default Rule Library'));
+      var library = createEl('details', 'persona-lab-default-rule-library persona-lab-details');
+      library.open = Boolean(state.defaultRuleLibraryOpen);
+      library.addEventListener('toggle', function () {
+        state.defaultRuleLibraryOpen = library.open;
+      });
+      var libraryHeader = createEl('summary', 'persona-lab-default-rule-library-header persona-lab-details-summary');
+      var libraryTitle = createEl('span', 'persona-lab-default-rule-library-title');
+      libraryTitle.appendChild(createEl('span', 'persona-lab-details-caret', '>'));
+      libraryTitle.appendChild(createEl('strong', null, 'Default Rule Library'));
+      libraryHeader.appendChild(libraryTitle);
       libraryHeader.appendChild(createEl('span', 'persona-lab-badge', String(defaultRules.length)));
       library.appendChild(libraryHeader);
+      var libraryBody = createEl('div', 'persona-lab-default-rule-library-body');
       defaultRules.forEach(function (defaultRule) {
         var defaultRuleCard = createEl('div', 'persona-lab-default-rule-card');
         var defaultRuleCopy = createEl('div', 'persona-lab-default-rule-card-copy');
@@ -4904,8 +5593,9 @@
           renderState(state);
         });
         defaultRuleCard.appendChild(useRule);
-        library.appendChild(defaultRuleCard);
+        libraryBody.appendChild(defaultRuleCard);
       });
+      library.appendChild(libraryBody);
       sidebar.appendChild(library);
     }
     var ruleList = createEl('div', 'persona-lab-rule-list');
@@ -5695,23 +6385,38 @@
   }
 
   function buildNav(state) {
-    var nav = createEl('aside', 'persona-lab-nav');
+    var nav = createEl('aside', 'persona-lab-nav' + (state.navCollapsed ? ' collapsed' : ''));
     var canAuthor = hasConsultantOrganizationContext(state);
     var header = createEl('div', 'persona-lab-nav-header');
-    var copy = createEl('div');
+    var copy = createEl('div', 'persona-lab-nav-copy');
     copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Persona Studio'));
     copy.appendChild(createEl('strong', null, 'Personas'));
     if (state.organizationName) {
       copy.appendChild(createEl('span', 'persona-lab-badge', state.organizationName));
     }
     header.appendChild(copy);
-    var createButton = createEl('button', 'persona-lab-button small', 'New persona');
+    var headerActions = createEl('div', 'persona-lab-nav-header-actions');
+    var createButton = createEl('button', 'persona-lab-button small persona-lab-nav-action', 'New persona');
     createButton.type = 'button';
     createButton.disabled = Boolean(state.showArchivedPersonas) || !canAuthor;
     createButton.addEventListener('click', function () {
       openCreatePersonaModal(state, '');
     });
-    header.appendChild(createButton);
+    headerActions.appendChild(createButton);
+    var collapseButton = createEl(
+      'button',
+      'persona-lab-button small persona-lab-nav-toggle',
+      state.navCollapsed ? '>' : '<'
+    );
+    collapseButton.type = 'button';
+    collapseButton.setAttribute('aria-label', state.navCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    collapseButton.title = state.navCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    collapseButton.addEventListener('click', function () {
+      state.navCollapsed = !state.navCollapsed;
+      renderState(state);
+    });
+    headerActions.appendChild(collapseButton);
+    header.appendChild(headerActions);
     nav.appendChild(header);
 
     var controls = createEl('div', 'persona-lab-nav-controls');
@@ -6248,6 +6953,594 @@
     return panel;
   }
 
+  function renderTestSuiteCaseList(suite) {
+    var list = createEl('div', 'persona-lab-run-grid');
+    ensureArray(suite && suite.cases).forEach(function (testCase, index) {
+      var card = createEl('details', 'persona-lab-run-card persona-lab-details');
+      card.open = index === 0;
+      var summary = createEl('summary', 'persona-lab-run-card-header persona-lab-details-summary');
+      summary.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+      var copy = createEl('div');
+      copy.appendChild(createEl('strong', null, testCase.title || ('Case ' + (index + 1))));
+      copy.appendChild(createEl('div', 'persona-lab-helper', testCase.targetSkillKey ? 'Skill: ' + testCase.targetSkillKey : 'Synthetic scenario'));
+      summary.appendChild(copy);
+      summary.appendChild(createEl('span', 'persona-lab-badge', formatNumber(ensureArray(testCase.checks).length) + ' checks'));
+      card.appendChild(summary);
+      var body = createEl('div', 'persona-lab-details-body');
+      body.appendChild(createEl('pre', 'persona-lab-json', testCase.prompt || ''));
+      ensureArray(testCase.checks).forEach(function (check) {
+        var item = createEl('div', 'persona-lab-review-item');
+        item.appendChild(createEl('strong', null, check.label || check.type));
+        item.appendChild(createEl('p', null, formatStatusLabel(check.type) + (check.toolName ? ': ' + check.toolName : check.value ? ': ' + check.value : '')));
+        body.appendChild(item);
+      });
+      card.appendChild(body);
+      list.appendChild(card);
+    });
+    if (!list.childNodes.length) {
+      list.appendChild(createEl('div', 'persona-lab-empty', 'No synthetic cases yet.'));
+    }
+    return list;
+  }
+
+  function renderSuiteCaseEditor(state, suite) {
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h3', null, suite ? 'Add synthetic case' : 'First synthetic case'));
+    var draft = state.suiteCaseDraft || defaultSuiteCaseDraft();
+    state.suiteCaseDraft = draft;
+    var grid = createEl('div', 'persona-lab-grid');
+    var title = createEl('input', 'persona-lab-input');
+    title.value = draft.title || '';
+    bindInput(title, function () {
+      draft.title = title.value;
+    });
+    renderFieldGroup(grid, 'Case title', title);
+    var skillSelect = createEl('select', 'persona-lab-input');
+    var emptySkillOption = createEl('option');
+    emptySkillOption.value = '';
+    emptySkillOption.textContent = 'No target skill';
+    skillSelect.appendChild(emptySkillOption);
+    skillContractOptions(state).forEach(function (option) {
+      var item = createEl('option');
+      item.value = option.key;
+      item.textContent = option.label + ' · ' + option.key;
+      if (option.key === draft.targetSkillKey) item.selected = true;
+      skillSelect.appendChild(item);
+    });
+    bindInput(skillSelect, function () {
+      draft.targetSkillKey = skillSelect.value;
+    });
+    renderFieldGroup(
+      grid,
+      'Target skill',
+      skillSelect,
+      'Optional skill attribution used by contract results and Insights drilldowns.'
+    );
+    panel.appendChild(grid);
+    var prompt = createEl('textarea', 'persona-lab-textarea');
+    prompt.value = draft.prompt || '';
+    prompt.placeholder = 'Synthetic prompt only. Do not paste customer samples.';
+    prompt.style.minHeight = '120px';
+    bindInput(prompt, function () {
+      draft.prompt = prompt.value;
+    });
+    renderFieldGroup(panel, 'Synthetic prompt', prompt);
+    var checks = createEl('textarea', 'persona-lab-textarea json');
+    checks.value = draft.checksText || '[]';
+    checks.style.minHeight = '130px';
+    bindInput(checks, function () {
+      draft.checksText = checks.value;
+    });
+    var checkActions = createEl('div', 'persona-lab-actions');
+    [
+      ['Require tool call', { type: 'tool_called', label: 'Required tool is called', toolName: 'push_review', minCalls: 1 }],
+      ['Forbid tool call', { type: 'tool_not_called', label: 'Forbidden tool is absent', toolName: 'unsafe_tool' }],
+      ['Require outcome', { type: 'tool_outcome', label: 'Tool returns allowed outcome', toolName: 'push_review', allowedStatuses: ['success', 'needs_review'], minCalls: 1 }],
+      ['Require sequence', { type: 'tool_sequence', label: 'Review before write', sequence: ['push_review', 'await_review'] }],
+    ].forEach(function (entry) {
+      var button = createEl('button', 'persona-lab-button', entry[0]);
+      button.type = 'button';
+      button.addEventListener('click', function () {
+        appendSuiteCheckTemplate(state, entry[1]);
+      });
+      checkActions.appendChild(button);
+    });
+    renderFieldGroup(
+      panel,
+      'Checks JSON',
+      checks,
+      'Use output checks plus tool_called, tool_not_called, tool_outcome, or tool_sequence contracts.'
+    );
+    panel.appendChild(checkActions);
+    var actions = createEl('div', 'persona-lab-actions');
+    var saveButton = createEl('button', 'persona-lab-button primary', suite ? 'Add Case' : 'Create Suite');
+    saveButton.type = 'button';
+    saveButton.disabled = Boolean(state.suiteCaseSaving || state.suiteSaving || (suite && !suite.id));
+    saveButton.addEventListener('click', function () {
+      if (suite && suite.id) {
+        saveSuiteCase(state, suite.id).catch(function () {});
+      } else {
+        createTestSuite(state).catch(function () {});
+      }
+    });
+    actions.appendChild(saveButton);
+    panel.appendChild(actions);
+    return panel;
+  }
+
+  function renderSuiteRunProgress(state) {
+    var suiteRun = state.suiteRunDetails && state.suiteRunDetails.suiteRun;
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h3', null, 'Run Progress'));
+    if (!suiteRun) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Launch a suite to see case progress and evidence.'));
+      return panel;
+    }
+    var summary = createEl('div', 'persona-lab-kv');
+    [
+      ['Status', suiteRun.status],
+      ['Cases', suiteRun.runCount],
+      ['Passed', suiteRun.passCount],
+      ['Failed', suiteRun.failCount],
+      ['Needs review', suiteRun.needsReviewCount],
+    ].forEach(function (entry) {
+      var card = createEl('div', 'persona-lab-kv-item');
+      card.appendChild(createEl('span', null, entry[0]));
+      card.appendChild(createEl('strong', null, String(entry[1] || '0')));
+      summary.appendChild(card);
+    });
+    panel.appendChild(summary);
+    ensureArray(suiteRun.caseRuns).forEach(function (caseRun) {
+      var row = createEl('details', 'persona-lab-run-card persona-lab-details');
+      row.open = caseRun.status === 'NEEDS_REVIEW' || caseRun.status === 'FAILED';
+      var header = createEl('summary', 'persona-lab-run-card-header persona-lab-details-summary');
+      header.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+      var copy = createEl('div');
+      copy.appendChild(createEl('strong', null, caseRun.title || 'Synthetic case'));
+      copy.appendChild(createEl('div', 'persona-lab-helper', (caseRun.targetSkillKey ? 'Skill ' + caseRun.targetSkillKey + ' · ' : '') + (caseRun.threadId ? 'Thread ' + formatThreadLabel(caseRun.threadId) : 'Background run')));
+      header.appendChild(copy);
+      header.appendChild(createEl('span', statusBadgeClass(caseRun.status), formatStatusLabel(caseRun.status)));
+      row.appendChild(header);
+      var body = createEl('div', 'persona-lab-details-body');
+      ensureArray(caseRun.deterministicResults).forEach(function (result) {
+        var item = createEl('div', 'persona-lab-review-item');
+        item.appendChild(createEl('strong', null, result.label || result.type));
+        item.appendChild(createEl('p', null, (result.status || 'PENDING') + ' · ' + (result.message || '')));
+        body.appendChild(item);
+      });
+      if (caseRun.evidence || caseRun.reportSnippet) {
+        body.appendChild(createEl('h4', null, 'Evidence'));
+        body.appendChild(createEl('pre', 'persona-lab-json', renderJson(caseRun.evidence || { snippet: caseRun.reportSnippet })));
+      }
+      if (ensureArray(caseRun.toolEvidence).length) {
+        body.appendChild(createEl('h4', null, 'Tool Evidence'));
+        var tools = createEl('div', 'persona-lab-insights-table');
+        ensureArray(caseRun.toolEvidence).forEach(function (tool) {
+          var row = createEl('div', 'persona-lab-insights-row');
+          row.appendChild(createEl('strong', null, tool.toolName || 'unknown_tool'));
+          row.appendChild(createEl('span', null, tool.status || 'unknown'));
+          row.appendChild(createEl('span', null, formatDuration(tool.durationMs)));
+          row.appendChild(createEl('span', null, tool.resultSummary || tool.errorMessage || 'No summary'));
+          tools.appendChild(row);
+        });
+        body.appendChild(tools);
+      }
+      if (caseRun.status === 'NEEDS_REVIEW') {
+        var reviewActions = createEl('div', 'persona-lab-actions');
+        ['PASS', 'FAIL'].forEach(function (decision) {
+          var button = createEl('button', 'persona-lab-button', decision === 'PASS' ? 'Mark Pass' : 'Mark Fail');
+          button.type = 'button';
+          button.disabled = Boolean(state.reviewingCaseRunIds[caseRun.id]);
+          button.addEventListener('click', function () {
+            reviewSuiteCaseRun(state, caseRun.id, decision).catch(function () {});
+          });
+          reviewActions.appendChild(button);
+        });
+        body.appendChild(reviewActions);
+      }
+      row.appendChild(body);
+      panel.appendChild(row);
+    });
+    return panel;
+  }
+
+  function renderSuiteReport(state) {
+    var suiteRun = state.suiteRunDetails && state.suiteRunDetails.suiteRun;
+    var report = suiteRun && suiteRun.report;
+    var panel = createEl('section', 'persona-lab-panel');
+    panel.appendChild(createEl('h3', null, 'Latest Customer-Safe Report'));
+    if (!report) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'The latest report appears after a suite run starts returning evidence.'));
+      return panel;
+    }
+    panel.appendChild(createEl('pre', 'persona-lab-json', renderJson(report)));
+    return panel;
+  }
+
+  function renderInsightMetric(label, value, helper) {
+    var card = createEl('div', 'persona-lab-metric-card');
+    card.appendChild(createEl('span', null, label));
+    card.appendChild(createEl('strong', null, value));
+    if (helper) card.appendChild(createEl('div', 'persona-lab-helper', helper));
+    return card;
+  }
+
+  function renderInsightFilters(state) {
+    var filters = ensureObject(state.insightsFilters);
+    var data = ensureObject(state.insights);
+    var options = ensureObject(data.filterOptions);
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h3', null, 'Filters'));
+    var grid = createEl('div', 'persona-lab-insights-filters');
+    var monthInput = createEl('input', 'persona-lab-input');
+    monthInput.type = 'month';
+    monthInput.value = String(filters.month || '');
+    bindInput(monthInput, function () {
+      filters.month = monthInput.value;
+      state.insightsLoadedKey = '';
+    });
+    renderFieldGroup(grid, 'Month', monthInput);
+
+    function selectField(label, key, optionList) {
+      var select = createEl('select', 'persona-lab-select');
+      var emptyOption = createEl('option', null, 'All');
+      emptyOption.value = '';
+      select.appendChild(emptyOption);
+      ensureArray(optionList).forEach(function (option) {
+        var optionEl = createEl('option', null, option.label || option.value);
+        optionEl.value = option.value || '';
+        select.appendChild(optionEl);
+      });
+      select.value = String(filters[key] || '');
+      bindInput(select, function () {
+        filters[key] = select.value;
+        state.insightsLoadedKey = '';
+      });
+      renderFieldGroup(grid, label, select);
+    }
+
+    selectField('Customer', 'customerOrganizationId', options.customers);
+    selectField('Model', 'model', options.models);
+    selectField('Workspace', 'workspaceId', options.workspaces);
+
+    var refresh = createEl('button', 'persona-lab-button primary', state.insightsLoading ? 'Refreshing...' : 'Refresh');
+    refresh.type = 'button';
+    refresh.disabled = Boolean(state.insightsLoading);
+    refresh.addEventListener('click', function () {
+      fetchInsights(state).catch(function () {});
+    });
+    grid.appendChild(refresh);
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function renderInsightBreakdownTable(title, rows) {
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h3', null, title));
+    var list = createEl('div', 'persona-lab-insights-table');
+    ensureArray(rows).slice(0, 8).forEach(function (row) {
+      var item = createEl('div', 'persona-lab-insights-row');
+      item.appendChild(createEl('strong', null, row.label || row.key || 'Unknown'));
+      item.appendChild(createEl('span', null, formatNumber(row.executionCount) + ' runs'));
+      item.appendChild(createEl('span', null, formatMoneyCents(row.billableCents)));
+      item.appendChild(createEl('span', null, formatNumber(row.totalTokens || 0) + ' tokens'));
+      item.appendChild(createEl('span', null, formatDuration(row.p95DurationMs)));
+      list.appendChild(item);
+    });
+    if (!list.children.length) {
+      list.appendChild(createEl('div', 'persona-lab-empty', 'No matching usage for this filter.'));
+    }
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function renderOptimizationOpportunities(state, opportunities) {
+    var panel = createEl('section', 'persona-lab-panel');
+    appendSectionHeading(
+      panel,
+      'h3',
+      'Optimization Inbox',
+      'Deterministic suggestions based on usage, model routing, cost, cache, tool, and storage signals.'
+    );
+    var items = ensureArray(opportunities);
+    if (!items.length) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'No optimization suggestions for the current filters.'));
+      return panel;
+    }
+    var grid = createEl('div', 'persona-lab-run-grid');
+    items.slice(0, 6).forEach(function (opportunity) {
+      var card = createEl('div', 'persona-lab-run-card persona-lab-opportunity-card ' + String(opportunity.severity || 'low'));
+      var header = createEl('div', 'persona-lab-run-card-header');
+      var copy = createEl('div');
+      copy.appendChild(createEl('div', 'persona-lab-run-eyebrow', formatStatusLabel(opportunity.severity || 'medium') + ' · ' + formatPercent(opportunity.confidence || 0)));
+      copy.appendChild(createEl('strong', null, opportunity.title || 'Optimization suggestion'));
+      copy.appendChild(createEl('div', 'persona-lab-run-note', opportunity.description || 'Review this suggestion before changing the draft.'));
+      header.appendChild(copy);
+      header.appendChild(createEl('span', 'persona-lab-badge', formatMoneyCents(opportunity.estimatedMonthlySavingsCents) + ' est.'));
+      card.appendChild(header);
+      var evidence = createEl('ul', 'persona-lab-list');
+      ensureArray(opportunity.evidence).slice(0, 4).forEach(function (line) {
+        evidence.appendChild(createEl('li', null, line));
+      });
+      card.appendChild(evidence);
+      card.appendChild(createEl('div', 'persona-lab-run-note', opportunity.recommendedAction || 'Create a reviewed draft change.'));
+      var actions = createEl('div', 'persona-lab-actions');
+      var draftButton = createEl('button', 'persona-lab-button primary', 'Create Draft');
+      draftButton.type = 'button';
+      draftButton.addEventListener('click', function () {
+        openOptimizationDraftModal(state, opportunity);
+      });
+      actions.appendChild(draftButton);
+      card.appendChild(actions);
+      grid.appendChild(card);
+    });
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function renderRecentInsightExecutions(executions) {
+    var panel = createEl('section', 'persona-lab-panel compact');
+    panel.appendChild(createEl('h3', null, 'Recent High-Signal Runs'));
+    var list = createEl('div', 'persona-lab-insights-table');
+    ensureArray(executions).slice(0, 8).forEach(function (run) {
+      var row = createEl('div', 'persona-lab-insights-row');
+      row.appendChild(createEl('strong', null, run.organizationName || run.label || run.executionRunId));
+      row.appendChild(createEl('span', null, run.model || 'Unassigned model'));
+      row.appendChild(createEl('span', null, formatMoneyCents(run.billableCents)));
+      row.appendChild(createEl('span', null, formatDuration(run.durationMs)));
+      row.appendChild(createEl('span', null, formatNumber(run.toolCalls) + ' tools'));
+      list.appendChild(row);
+    });
+    if (!list.children.length) {
+      list.appendChild(createEl('div', 'persona-lab-empty', 'No recent executions for this persona and filter.'));
+    }
+    panel.appendChild(list);
+    return panel;
+  }
+
+  function renderSkillContractInsights(data) {
+    var panel = createEl('section', 'persona-lab-panel');
+    appendSectionHeading(
+      panel,
+      'h3',
+      'Skill Contracts',
+      'Synthetic test results grouped by explicit target skill.'
+    );
+    var bySkill = ensureArray(data.bySkill);
+    var skills = bySkill.length ? bySkill : ensureArray(data.skillContractResults);
+    if (!skills.length) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'No skill contract runs for the current filters.'));
+      return panel;
+    }
+    var grid = createEl('div', 'persona-lab-run-grid');
+    skills.slice(0, 8).forEach(function (skill) {
+      var card = createEl('details', 'persona-lab-run-card persona-lab-details');
+      var summary = createEl('summary', 'persona-lab-run-card-header persona-lab-details-summary');
+      summary.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+      var copy = createEl('div');
+      copy.appendChild(createEl('strong', null, skill.label || skill.skillKey || 'Unassigned skill'));
+      copy.appendChild(createEl('div', 'persona-lab-helper', formatNumber(skill.runCount) + ' runs · ' + formatPercent(skill.passRate || 0) + ' pass rate'));
+      summary.appendChild(copy);
+      summary.appendChild(createEl('span', 'persona-lab-badge', formatNumber(skill.failCount || 0) + ' failed'));
+      card.appendChild(summary);
+      var body = createEl('div', 'persona-lab-details-body');
+      var metrics = createEl('div', 'persona-lab-kv');
+      [
+        ['Passed', skill.passCount],
+        ['Failed', skill.failCount],
+        ['Needs review', skill.needsReviewCount],
+      ].forEach(function (entry) {
+        var item = createEl('div', 'persona-lab-kv-item');
+        item.appendChild(createEl('span', null, entry[0]));
+        item.appendChild(createEl('strong', null, formatNumber(entry[1] || 0)));
+        metrics.appendChild(item);
+      });
+      body.appendChild(metrics);
+      if (ensureArray(skill.failingChecks).length) {
+        body.appendChild(createEl('h4', null, 'Failing Checks'));
+        ensureArray(skill.failingChecks).slice(0, 4).forEach(function (check) {
+          body.appendChild(createEl('div', 'persona-lab-run-note', (check.label || 'Check') + ' · ' + formatNumber(check.count || 0)));
+        });
+      }
+      if (ensureArray(skill.mostUsedTools).length) {
+        body.appendChild(createEl('h4', null, 'Most Used Tools'));
+        ensureArray(skill.mostUsedTools).slice(0, 4).forEach(function (tool) {
+          body.appendChild(createEl('div', 'persona-lab-run-note', (tool.toolName || 'tool') + ' · ' + formatNumber(tool.count || 0)));
+        });
+      }
+      card.appendChild(body);
+      grid.appendChild(card);
+    });
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function renderToolAndStoragePanels(data) {
+    var grid = createEl('div', 'persona-lab-grid');
+    var toolPanel = createEl('section', 'persona-lab-panel compact');
+    toolPanel.appendChild(createEl('h3', null, 'Tool Usage'));
+    var tools = createEl('div', 'persona-lab-insights-table');
+    ensureArray(data.toolUsage).slice(0, 6).forEach(function (tool) {
+      var row = createEl('div', 'persona-lab-insights-row');
+      row.appendChild(createEl('strong', null, tool.label || tool.toolName));
+      row.appendChild(createEl('span', null, formatNumber(tool.calls) + ' calls'));
+      row.appendChild(createEl('span', null, formatNumber(tool.failures) + ' failures'));
+      row.appendChild(createEl('span', null, formatDuration(tool.durationMs)));
+      row.appendChild(createEl('span', null, formatMoneyCents(tool.billableCents)));
+      tools.appendChild(row);
+    });
+    if (!tools.children.length) tools.appendChild(createEl('div', 'persona-lab-empty', 'No tool usage captured.'));
+    toolPanel.appendChild(tools);
+    grid.appendChild(toolPanel);
+
+    var storagePanel = createEl('section', 'persona-lab-panel compact');
+    storagePanel.appendChild(createEl('h3', null, 'Aggregate Storage'));
+    var storage = createEl('div', 'persona-lab-insights-table');
+    ensureArray(data.storageUsage).slice(0, 6).forEach(function (item) {
+      var row = createEl('div', 'persona-lab-insights-row');
+      row.appendChild(createEl('strong', null, item.label || item.itemType));
+      row.appendChild(createEl('span', null, item.organizationName || 'Organization'));
+      row.appendChild(createEl('span', null, item.workspaceName || 'Org-level'));
+      row.appendChild(createEl('span', null, item.provider || 'provider'));
+      row.appendChild(createEl('span', null, formatMoneyCents(item.billableCents)));
+      storage.appendChild(row);
+    });
+    if (!storage.children.length) storage.appendChild(createEl('div', 'persona-lab-empty', 'No aggregate storage charges captured.'));
+    storagePanel.appendChild(storage);
+    grid.appendChild(storagePanel);
+    return grid;
+  }
+
+  function renderInsightsPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel persona-lab-insights');
+    appendSectionHeading(
+      panel,
+      'h2',
+      'Insights',
+      'Efficiency, effectiveness, cost, cache, tool, and storage reporting for consultant-owned personas.'
+    );
+    if (state.personaWizardStep === 'insights' &&
+      state.selectedPersonaKey &&
+      !state.insightsLoading &&
+      state.insightsLoadedKey !== insightsLoadKey(state)) {
+      window.setTimeout(function () {
+        fetchInsights(state).catch(function () {});
+      }, 0);
+    }
+    if (state.insightsError) {
+      panel.appendChild(createEl('div', 'persona-lab-error', state.insightsError));
+    }
+    panel.appendChild(renderInsightFilters(state));
+
+    var data = ensureObject(state.insights);
+    if (state.insightsLoading && !data.summary) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Loading observability insights...'));
+      return panel;
+    }
+    if (!data.summary) {
+      panel.appendChild(createEl('div', 'persona-lab-empty', 'Refresh insights to load usage and optimization suggestions.'));
+      return panel;
+    }
+
+    var summary = ensureObject(data.summary);
+    var metrics = createEl('div', 'persona-lab-run-metric-grid');
+    metrics.appendChild(renderInsightMetric('Runs', formatNumber(summary.executionCount), formatPercent(summary.failureRate) + ' failure rate'));
+    metrics.appendChild(renderInsightMetric('Spend', formatMoneyCents(summary.billableCents), formatMoneyCents(summary.estimatedMonthlySavingsCents) + ' estimated savings'));
+    metrics.appendChild(renderInsightMetric('Tokens', formatNumber(summary.totalTokens), formatNumber(summary.cachedTokens) + ' cached'));
+    metrics.appendChild(renderInsightMetric('Cache hit', formatPercent(summary.cacheHitRate), formatNumber(summary.cacheWriteTokens) + ' cache-write tokens'));
+    metrics.appendChild(renderInsightMetric('p95 latency', formatDuration(summary.p95DurationMs), formatDuration(summary.averageDurationMs) + ' average'));
+    metrics.appendChild(renderInsightMetric('Tools', formatNumber(summary.toolCalls), formatNumber(summary.toolFailures) + ' failures'));
+    panel.appendChild(metrics);
+    panel.appendChild(renderOptimizationOpportunities(state, data.opportunities));
+    panel.appendChild(renderSkillContractInsights(data));
+    panel.appendChild(renderInsightBreakdownTable('Model Routing', data.byModel));
+    panel.appendChild(renderInsightBreakdownTable('Customer / Workspace Use', ensureArray(data.byCustomer).concat(ensureArray(data.byWorkspace))));
+    panel.appendChild(renderRecentInsightExecutions(data.recentExecutions));
+    panel.appendChild(renderToolAndStoragePanels(data));
+    return panel;
+  }
+
+  function renderTestSuitesPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel persona-lab-test-suites');
+    appendSectionHeading(
+      panel,
+      'h2',
+      'Test Suites',
+      'Synthetic acceptance scenarios, deterministic checks, manual review, and customer-safe evidence reports.'
+    );
+    if (state.personaWizardStep === 'test-suites' &&
+      state.selectedPersonaKey &&
+      !state.testSuitesLoading &&
+      state.testSuitesLoadedPersonaKey !== state.selectedPersonaKey) {
+      window.setTimeout(function () {
+        fetchTestSuites(state).catch(function () {});
+      }, 0);
+    }
+    if (state.testSuitesError) {
+      panel.appendChild(createEl('div', 'persona-lab-error', state.testSuitesError));
+    }
+    var toolbar = createEl('div', 'persona-lab-toolbar');
+    var toolbarCopy = createEl('div');
+    toolbarCopy.appendChild(createEl('strong', null, 'Synthetic scenarios only'));
+    toolbarCopy.appendChild(createEl('div', 'persona-lab-helper', 'Suites warn on failures but do not block persona distribution.'));
+    toolbar.appendChild(toolbarCopy);
+    var refresh = createEl('button', 'persona-lab-button', state.testSuitesLoading ? 'Refreshing...' : 'Refresh');
+    refresh.type = 'button';
+    refresh.disabled = Boolean(state.testSuitesLoading);
+    refresh.addEventListener('click', function () {
+      fetchTestSuites(state).catch(function () {});
+    });
+    toolbar.appendChild(refresh);
+    panel.appendChild(toolbar);
+
+    var draftPanel = createEl('section', 'persona-lab-panel');
+    draftPanel.appendChild(createEl('h3', null, 'Suite'));
+    var draft = state.suiteDraft || defaultSuiteDraft();
+    state.suiteDraft = draft;
+    var name = createEl('input', 'persona-lab-input');
+    name.value = draft.name || '';
+    bindInput(name, function () { draft.name = name.value; });
+    renderFieldGroup(draftPanel, 'Name', name);
+    var releaseNotes = createEl('textarea', 'persona-lab-textarea');
+    releaseNotes.value = draft.releaseNotes || '';
+    bindInput(releaseNotes, function () { draft.releaseNotes = releaseNotes.value; });
+    renderFieldGroup(draftPanel, 'Release notes', releaseNotes);
+    if (!ensureArray(state.testSuites).length) {
+      draftPanel.appendChild(renderSuiteCaseEditor(state, null));
+    } else {
+      var createButton = createEl('button', 'persona-lab-button', state.suiteSaving ? 'Creating...' : 'Create Suite');
+      createButton.type = 'button';
+      createButton.disabled = Boolean(state.suiteSaving);
+      createButton.addEventListener('click', function () {
+        createTestSuite(state).catch(function () {});
+      });
+      draftPanel.appendChild(createButton);
+    }
+    panel.appendChild(draftPanel);
+
+    var suites = ensureArray(state.testSuites);
+    if (!suites.length) {
+      if (state.testSuitesLoading) {
+        panel.appendChild(createEl('div', 'persona-lab-empty', 'Loading test suites...'));
+      }
+      return panel;
+    }
+
+    var selector = createEl('div', 'persona-lab-run-grid');
+    suites.forEach(function (suite) {
+      var button = createEl(
+        'button',
+        'persona-lab-choice' + (suite.id === state.selectedTestSuiteId ? ' active' : '')
+      );
+      button.type = 'button';
+      button.appendChild(createEl('strong', null, suite.name || 'Untitled suite'));
+      button.appendChild(createEl('span', null, formatNumber(ensureArray(suite.cases).length) + ' cases · v' + suite.version));
+      button.addEventListener('click', function () {
+        state.selectedTestSuiteId = suite.id;
+        renderState(state);
+      });
+      selector.appendChild(button);
+    });
+    panel.appendChild(selector);
+
+    var suite = selectedTestSuite(state);
+    if (!suite) return panel;
+    panel.appendChild(renderTestSuiteCaseList(suite));
+    panel.appendChild(renderSuiteCaseEditor(state, suite));
+    var actions = createEl('div', 'persona-lab-actions');
+    var runButton = createEl('button', 'persona-lab-button primary', state.suiteRunLaunching ? 'Launching...' : 'Run Suite');
+    runButton.type = 'button';
+    runButton.disabled = Boolean(state.suiteRunLaunching || !ensureArray(suite.cases).length);
+    runButton.addEventListener('click', function () {
+      launchTestSuiteRun(state, suite.id).catch(function () {});
+    });
+    actions.appendChild(runButton);
+    panel.appendChild(actions);
+    panel.appendChild(renderSuiteRunProgress(state));
+    panel.appendChild(renderSuiteReport(state));
+    return panel;
+  }
+
   function renderBatchWizard(state) {
     if (!state.batchWizardOpen || !state.batchDraft) {
       return null;
@@ -6557,6 +7850,78 @@
     footer.appendChild(actions);
     modal.appendChild(footer);
 
+    return overlay;
+  }
+
+  function renderOptimizationDraftModal(state) {
+    if (!state.optimizationDraftModalOpen || !state.optimizationDraftOpportunity) {
+      return null;
+    }
+    var opportunity = state.optimizationDraftOpportunity;
+    var action = ensureObject(opportunity.draftAction);
+    var overlay = createEl('div', 'persona-lab-overlay');
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay && !state.optimizationDraftSubmitting) {
+        openOptimizationDraftModal(state, null);
+      }
+    });
+    var modal = createEl('div', 'persona-lab-modal');
+    overlay.appendChild(modal);
+
+    var header = createEl('div', 'persona-lab-modal-header');
+    var copy = createEl('div');
+    copy.appendChild(createEl('p', 'persona-lab-nav-title', 'Optimization Draft'));
+    copy.appendChild(createEl('h2', null, opportunity.title || 'Create Draft'));
+    copy.appendChild(createEl('p', null, 'Review the exact draft change before it is saved. This never promotes or enables the persona.'));
+    header.appendChild(copy);
+    var close = createEl('button', 'persona-lab-button', 'Close');
+    close.type = 'button';
+    close.disabled = Boolean(state.optimizationDraftSubmitting);
+    close.addEventListener('click', function () {
+      openOptimizationDraftModal(state, null);
+    });
+    header.appendChild(close);
+    modal.appendChild(header);
+
+    var body = createEl('div', 'persona-lab-modal-body');
+    if (state.optimizationDraftError) {
+      body.appendChild(createEl('div', 'persona-lab-error', state.optimizationDraftError));
+    }
+    var summary = createEl('section', 'persona-lab-panel compact');
+    summary.appendChild(createEl('h3', null, 'Proposed change'));
+    var kv = createEl('div', 'persona-lab-kv');
+    [
+      ['Action', action.type || 'Draft change'],
+      ['Persona', opportunity.personaLabel || state.selectedPersonaKey],
+      ['Estimated savings', formatMoneyCents(opportunity.estimatedMonthlySavingsCents)],
+      ['Confidence', formatPercent(opportunity.confidence || 0)],
+    ].forEach(function (item) {
+      var card = createEl('div', 'persona-lab-kv-item');
+      card.appendChild(createEl('span', null, item[0]));
+      card.appendChild(createEl('strong', null, item[1]));
+      kv.appendChild(card);
+    });
+    summary.appendChild(kv);
+    summary.appendChild(createEl('pre', 'persona-lab-json', renderJson(action)));
+    body.appendChild(summary);
+    modal.appendChild(body);
+
+    var footer = createEl('div', 'persona-lab-modal-footer');
+    var cancel = createEl('button', 'persona-lab-button', 'Cancel');
+    cancel.type = 'button';
+    cancel.disabled = Boolean(state.optimizationDraftSubmitting);
+    cancel.addEventListener('click', function () {
+      openOptimizationDraftModal(state, null);
+    });
+    var apply = createEl('button', 'persona-lab-button primary', state.optimizationDraftSubmitting ? 'Saving...' : 'Save Draft');
+    apply.type = 'button';
+    apply.disabled = Boolean(state.optimizationDraftSubmitting);
+    apply.addEventListener('click', function () {
+      applyOptimizationDraft(state).catch(function () {});
+    });
+    footer.appendChild(cancel);
+    footer.appendChild(apply);
+    modal.appendChild(footer);
     return overlay;
   }
 
@@ -7170,6 +8535,12 @@
     var toolbar = createEl('div', 'persona-lab-toolbar');
     var titleCopy = createEl('div', 'persona-lab-toolbar-title');
     titleCopy.appendChild(createEl('h1', null, 'Persona Studio'));
+    var currentDefinition = currentPersonaDefinition(state);
+    if (currentDefinition.displayName) {
+      titleCopy.appendChild(
+        createEl('span', 'persona-lab-toolbar-persona-name', currentDefinition.displayName)
+      );
+    }
     if (isCurrentPersonaArchived(state)) {
       titleCopy.appendChild(createEl('span', 'persona-lab-badge archived', 'Archived persona'));
     }
@@ -7306,6 +8677,16 @@
 
     var registries = activeRegistries(state);
     ensureRequiredModelDefaults(state, registries);
+    state.personaWizardStep = normalizePersonaEditorStep(state.personaWizardStep);
+
+    content.appendChild(renderPersonaEditorStepper(state));
+    var overviewPanel = createPersonaWizardPanel(state, 'overview');
+    var instructionsPanel = createPersonaWizardPanel(state, 'instructions');
+    var runtimePanel = createPersonaWizardPanel(state, 'runtime');
+    var skillsPanel = createPersonaWizardPanel(state, 'skills');
+    var reviewPanel = createPersonaWizardPanel(state, 'review');
+    var testSuitesPanel = createPersonaWizardPanel(state, 'test-suites');
+    var insightsPanel = createPersonaWizardPanel(state, 'insights');
 
     var identity = createEl('section', 'persona-lab-panel');
     appendSectionHeading(
@@ -7348,7 +8729,7 @@
       updateDirtyState(state);
     });
     renderFieldGroup(identity, 'Description', definitionDescription, 'Short summary used in catalogs and handoffs. Example: Reviews inbound customer email and drafts prioritized replies.');
-    content.appendChild(identity);
+    overviewPanel.appendChild(identity);
 
     var promptPanel = createEl('section', 'persona-lab-panel');
     appendSectionHeading(
@@ -7386,7 +8767,7 @@
       'Persona rules are saved as an ordered list of behavioral constraints. Example: Always ask one clarifying question before estimating project scope.'
     );
     promptPanel.appendChild(renderRulesEditor(state));
-    content.appendChild(promptPanel);
+    instructionsPanel.appendChild(promptPanel);
 
     var policyPanel = createEl('section', 'persona-lab-panel');
     appendSectionHeading(
@@ -7648,7 +9029,7 @@
 	        }
 	      )
 	    );
-    content.appendChild(policyPanel);
+    runtimePanel.appendChild(policyPanel);
 
 	    var skillPanel = createEl('section', 'persona-lab-panel');
 	    appendSectionHeading(
@@ -7802,9 +9183,9 @@
       renderState(state);
     });
     skillPanel.appendChild(addSkill);
-    content.appendChild(skillPanel);
+    skillsPanel.appendChild(skillPanel);
 
-    content.appendChild(renderInspectorPanel(state));
+    reviewPanel.appendChild(renderInspectorPanel(state));
 
     var promptSnapshot = createEl('section', 'persona-lab-panel');
     promptSnapshot.appendChild(createEl('h2', null, 'Runtime Snapshots'));
@@ -7812,10 +9193,20 @@
     promptSnapshot.appendChild(createEl('pre', 'persona-lab-json', state.current.document.prompt || ''));
     promptSnapshot.appendChild(createEl('h3', null, 'Inspector'));
     promptSnapshot.appendChild(createEl('pre', 'persona-lab-json', renderJson(state.current.inspector || {})));
-    content.appendChild(promptSnapshot);
+    reviewPanel.appendChild(promptSnapshot);
 
-    content.appendChild(renderLatestRunPanel(state));
-    content.appendChild(renderLatestBatchPanel(state));
+    reviewPanel.appendChild(renderLatestRunPanel(state));
+    reviewPanel.appendChild(renderLatestBatchPanel(state));
+    testSuitesPanel.appendChild(renderTestSuitesPanel(state));
+    insightsPanel.appendChild(renderInsightsPanel(state));
+    content.appendChild(overviewPanel);
+    content.appendChild(instructionsPanel);
+    content.appendChild(runtimePanel);
+    content.appendChild(skillsPanel);
+    content.appendChild(reviewPanel);
+    content.appendChild(testSuitesPanel);
+    content.appendChild(insightsPanel);
+    content.appendChild(renderPersonaWizardFooter(state));
     shell.appendChild(content);
     return shell;
   }
@@ -7830,13 +9221,17 @@
       : SESSION_LABEL);
 
     state.container.innerHTML = '';
-    var root = createEl('div', 'persona-lab-root');
+    var root = createEl('div', 'persona-lab-root' + (state.navCollapsed ? ' nav-collapsed' : ''));
     root.appendChild(buildNav(state));
     root.appendChild(renderMain(state));
     state.container.appendChild(root);
     var wizard = renderBatchWizard(state);
     if (wizard) {
       state.container.appendChild(wizard);
+    }
+    var optimizationDraftModal = renderOptimizationDraftModal(state);
+    if (optimizationDraftModal) {
+      state.container.appendChild(optimizationDraftModal);
     }
     var createPersonaModal = renderCreatePersonaModal(state);
     if (createPersonaModal) {
