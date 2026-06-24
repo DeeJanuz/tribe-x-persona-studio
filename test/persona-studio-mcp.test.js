@@ -23,6 +23,9 @@ describe("Persona Studio MCP tools", () => {
     expect(names).toContain("update-persona");
     expect(names).toContain("archive-persona");
     expect(names).toContain("create-test-suite");
+    expect(names).toContain("persona-requirement-submit");
+    expect(names).toContain("persona-requirements-list");
+    expect(names).toContain("persona-requirement-capture-conversation");
     expect(names).toContain("relay-probe");
   });
 
@@ -170,5 +173,139 @@ describe("Persona Studio MCP tools", () => {
         }),
       }),
     );
+  });
+
+  it("submits persona proposals as tagged DecidR decisions", async () => {
+    const tags = [];
+    const fetchMock = vi.fn(async (url, options = {}) => {
+      const parsedUrl = new URL(url);
+      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions") {
+        return new Response(JSON.stringify({ data: { id: "dec_1" } }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "GET" && parsedUrl.pathname === "/api/tags") {
+        return new Response(JSON.stringify({ data: tags }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "POST" && parsedUrl.pathname === "/api/tags") {
+        const body = JSON.parse(options.body);
+        const tag = { id: `tag_${tags.length + 1}`, name: body.name };
+        tags.push(tag);
+        return new Response(JSON.stringify({ data: tag }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/tags") {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected ${options.method} ${parsedUrl.pathname}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = parseToolText(
+      await handleToolCall("persona-requirement-submit", {
+        organizationId: "org_consultant",
+        decidrProjectId: "proj_1",
+        requestType: "persona",
+        personaKey: "qa-coach",
+        purpose: "Review acceptance criteria before engineering starts.",
+        skills: ["Acceptance review"],
+        guardrails: ["No customer secrets"],
+        outcomes: ["Clear checklist"],
+        priority: "high",
+        decidrAuthorization: "Bearer decidr-token",
+      }),
+    );
+
+    expect(result.recordType).toBe("decision");
+    expect(result.mapping).toBe("persona-decision");
+    expect(tags.map((tag) => tag.name)).toEqual([
+      "persona-studio",
+      "request:persona",
+      "priority:high",
+      "persona:qa-coach",
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app.decidrmcp.com/api/decisions",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer decidr-token",
+        }),
+        body: expect.stringContaining("Acceptance review"),
+      }),
+    );
+  });
+
+  it("submits plain bug reports as DecidR tasks", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: "task_1" } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = parseToolText(
+      await handleToolCall("persona-requirement-submit", {
+        organizationId: "org_consultant",
+        decidrProjectId: "proj_1",
+        requestType: "bug",
+        personaKey: "qa-coach",
+        purpose: "The persona drops required citations.",
+      }),
+    );
+
+    expect(result.recordType).toBe("task");
+    expect(result.mapping).toBe("bug-task");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app.decidrmcp.com/api/tasks",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("request:bug"),
+      }),
+    );
+  });
+
+  it("captures conversation summaries as compact DecidR audit events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: "audit_1" } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await handleToolCall("persona-requirement-capture-conversation", {
+      organizationId: "org_consultant",
+      decidrProjectId: "proj_1",
+      decisionId: "dec_1",
+      personaKey: "qa-coach",
+      requestType: "feature",
+      summary: "User asked the persona to include compliance escalation steps.",
+      compactSourceRefs: [{ label: "AI thread", threadId: "thread_1" }],
+      externalReferenceId: "thread_1:feature",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app.decidrmcp.com/api/audit-events",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("compact-summary-no-raw-transcript"),
+      }),
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.decisionIds).toEqual(["dec_1"]);
+    expect(body.payload.compactSourceRefs).toEqual([
+      { label: "AI thread", threadId: "thread_1" },
+    ]);
   });
 });

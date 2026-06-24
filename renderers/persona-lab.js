@@ -15,6 +15,9 @@
   var CUSTOM_SKILL_DEFAULT_TITLE = 'New custom skill';
   var CUSTOM_SKILL_DEFAULT_SUMMARY = 'Describe what this skill adds.';
   var CUSTOM_SKILL_DEFAULT_CONTENT = 'Add markdown instructions here.';
+  var REQUIREMENT_REQUEST_TYPES = ['persona', 'feature', 'bug'];
+  var REQUIREMENT_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+  var REQUIREMENT_STATUS_OPTIONS = ['BACKLOG', 'DRAFT', 'PROPOSED', 'APPROVED', 'IN_PROGRESS', 'STAGED', 'IMPLEMENTED'];
   var FALLBACK_PERSONA_STUDIO_MODELS = [
     'google/gemini-3-flash-preview',
     'openai/gpt-5-mini',
@@ -41,12 +44,13 @@
   var BATCH_STORAGE_KEY = '__personaLabBatchState';
   var PERSONA_EDITOR_WIZARD_STEPS = [
     { key: 'overview', eyebrow: 'Step 1', label: 'Overview' },
-    { key: 'instructions', eyebrow: 'Step 2', label: 'Instructions' },
-    { key: 'runtime', eyebrow: 'Step 3', label: 'Runtime' },
-    { key: 'skills', eyebrow: 'Step 4', label: 'Skills' },
-    { key: 'review', eyebrow: 'Step 5', label: 'Review & Test' },
-    { key: 'test-suites', eyebrow: 'Step 6', label: 'Test Suites' },
-    { key: 'insights', eyebrow: 'Step 7', label: 'Insights' },
+    { key: 'requirements', eyebrow: 'Step 2', label: 'Requirements' },
+    { key: 'instructions', eyebrow: 'Step 3', label: 'Instructions' },
+    { key: 'runtime', eyebrow: 'Step 4', label: 'Runtime' },
+    { key: 'skills', eyebrow: 'Step 5', label: 'Skills' },
+    { key: 'review', eyebrow: 'Step 6', label: 'Review & Test' },
+    { key: 'test-suites', eyebrow: 'Step 7', label: 'Test Suites' },
+    { key: 'insights', eyebrow: 'Step 8', label: 'Insights' },
   ];
   var modelSelectorSequence = 0;
 
@@ -148,6 +152,30 @@
           allowedStatuses: ['success', 'needs_review'],
         },
       ]),
+    };
+  }
+
+  function defaultRequirementFilters() {
+    return {
+      personaKey: '',
+      requestType: '',
+      customerOrganizationId: '',
+      status: '',
+      priority: '',
+      ownerId: '',
+    };
+  }
+
+  function defaultRequirementDraft() {
+    return {
+      requestType: 'persona',
+      priority: 'medium',
+      customerOrganizationId: '',
+      purpose: '',
+      skillsText: '',
+      guardrailsText: '',
+      outcomesText: '',
+      sourceRefsText: '',
     };
   }
 
@@ -254,6 +282,9 @@
         suiteRunDetails: null,
         suiteRunPollTimer: null,
         reviewingCaseRunIds: {},
+        requirementFilters: defaultRequirementFilters(),
+        requirementDraft: defaultRequirementDraft(),
+        requirementPayloadPreview: null,
         insights: null,
         insightsLoading: false,
         insightsError: '',
@@ -7440,6 +7471,202 @@
     return panel;
   }
 
+  function requirementTextLines(value) {
+    return String(value || '')
+      .split('\n')
+      .map(function (line) { return line.trim(); })
+      .filter(Boolean);
+  }
+
+  function parseRequirementSourceRefs(text) {
+    return requirementTextLines(text).map(function (line) {
+      var separator = line.indexOf('|');
+      if (separator > -1) {
+        return {
+          label: line.slice(0, separator).trim(),
+          url: line.slice(separator + 1).trim(),
+        };
+      }
+      return { label: line };
+    });
+  }
+
+  function requirementPayloadForState(state) {
+    var draft = Object.assign(defaultRequirementDraft(), ensureObject(state.requirementDraft));
+    return {
+      tool: 'tribe_x_persona_studio__persona-requirement-submit',
+      arguments: {
+        organizationId: selectedConsultantOrganizationId(state) || state.organizationId || '',
+        customerOrganizationId: String(draft.customerOrganizationId || '').trim() || undefined,
+        personaKey: state.selectedPersonaKey || undefined,
+        requestType: draft.requestType || 'persona',
+        purpose: String(draft.purpose || '').trim(),
+        skills: requirementTextLines(draft.skillsText),
+        guardrails: requirementTextLines(draft.guardrailsText),
+        outcomes: requirementTextLines(draft.outcomesText),
+        priority: draft.priority || 'medium',
+        compactSourceRefs: parseRequirementSourceRefs(draft.sourceRefsText),
+      },
+    };
+  }
+
+  function requirementListPayloadForState(state) {
+    var filters = Object.assign(defaultRequirementFilters(), ensureObject(state.requirementFilters));
+    return {
+      tool: 'tribe_x_persona_studio__persona-requirements-list',
+      arguments: {
+        organizationId: selectedConsultantOrganizationId(state) || state.organizationId || '',
+        personaKey: filters.personaKey || state.selectedPersonaKey || undefined,
+        requestType: filters.requestType || undefined,
+        customerOrganizationId: filters.customerOrganizationId || undefined,
+        status: filters.status || undefined,
+        priority: filters.priority || undefined,
+        ownerId: filters.ownerId || undefined,
+      },
+    };
+  }
+
+  function appendRequirementSelect(parent, label, value, options, onChange, includeAny) {
+    var select = createEl('select', 'persona-lab-select');
+    if (includeAny) {
+      var any = document.createElement('option');
+      any.value = '';
+      any.textContent = 'Any';
+      if (!value) any.selected = true;
+      select.appendChild(any);
+    }
+    options.forEach(function (optionValue) {
+      var option = document.createElement('option');
+      option.value = optionValue;
+      option.textContent = formatStatusLabel(optionValue);
+      if (value === optionValue) option.selected = true;
+      select.appendChild(option);
+    });
+    bindInput(select, function () {
+      onChange(select.value);
+    });
+    renderFieldGroup(parent, label, select);
+    return select;
+  }
+
+  function renderRequirementsPanel(state) {
+    var panel = createEl('section', 'persona-lab-panel persona-lab-requirements');
+    var filters = Object.assign(defaultRequirementFilters(), ensureObject(state.requirementFilters));
+    var draft = Object.assign(defaultRequirementDraft(), ensureObject(state.requirementDraft));
+    state.requirementFilters = filters;
+    state.requirementDraft = draft;
+
+    var toolbar = createEl('div', 'persona-lab-toolbar');
+    var copy = createEl('div');
+    copy.appendChild(createEl('strong', null, 'DecidR-backed requirements'));
+    copy.appendChild(createEl('div', 'persona-lab-helper', 'Persona proposals and feature requests map to decisions. Plain bugs map to tasks.'));
+    toolbar.appendChild(copy);
+    var toolbarActions = createEl('div', 'persona-lab-actions');
+    var buildList = createEl('button', 'persona-lab-button', 'Build list query');
+    buildList.type = 'button';
+    buildList.addEventListener('click', function () {
+      state.requirementPayloadPreview = requirementListPayloadForState(state);
+      renderState(state);
+    });
+    toolbarActions.appendChild(buildList);
+    var buildSubmit = createEl('button', 'persona-lab-button primary', 'Build request payload');
+    buildSubmit.type = 'button';
+    buildSubmit.addEventListener('click', function () {
+      state.requirementPayloadPreview = requirementPayloadForState(state);
+      renderState(state);
+    });
+    toolbarActions.appendChild(buildSubmit);
+    toolbar.appendChild(toolbarActions);
+    panel.appendChild(toolbar);
+
+    var filterPanel = createEl('section', 'persona-lab-panel compact');
+    filterPanel.appendChild(createEl('h3', null, 'List filters'));
+    var filterGrid = createEl('div', 'persona-lab-grid');
+    var personaInput = markFocusKey(createEl('input', 'persona-lab-input'), 'requirements-filter-persona');
+    personaInput.value = filters.personaKey || state.selectedPersonaKey || '';
+    personaInput.placeholder = state.selectedPersonaKey || 'persona-key';
+    bindInput(personaInput, function () {
+      filters.personaKey = personaInput.value;
+    });
+    renderFieldGroup(filterGrid, 'Persona', personaInput);
+    appendRequirementSelect(filterGrid, 'Type', filters.requestType, REQUIREMENT_REQUEST_TYPES, function (value) {
+      filters.requestType = value;
+    }, true);
+    var customerInput = markFocusKey(createEl('input', 'persona-lab-input'), 'requirements-filter-customer');
+    customerInput.value = filters.customerOrganizationId;
+    customerInput.placeholder = 'customer-org-id';
+    bindInput(customerInput, function () {
+      filters.customerOrganizationId = customerInput.value;
+    });
+    renderFieldGroup(filterGrid, 'Customer org', customerInput);
+    appendRequirementSelect(filterGrid, 'Status', filters.status, REQUIREMENT_STATUS_OPTIONS, function (value) {
+      filters.status = value;
+    }, true);
+    appendRequirementSelect(filterGrid, 'Priority', filters.priority, REQUIREMENT_PRIORITIES, function (value) {
+      filters.priority = value;
+    }, true);
+    var ownerInput = markFocusKey(createEl('input', 'persona-lab-input'), 'requirements-filter-owner');
+    ownerInput.value = filters.ownerId;
+    ownerInput.placeholder = 'owner-user-id';
+    bindInput(ownerInput, function () {
+      filters.ownerId = ownerInput.value;
+    });
+    renderFieldGroup(filterGrid, 'Owner', ownerInput);
+    filterPanel.appendChild(filterGrid);
+    panel.appendChild(filterPanel);
+
+    var wizard = createEl('section', 'persona-lab-panel compact');
+    wizard.appendChild(createEl('h3', null, 'Requirement wizard'));
+    var grid = createEl('div', 'persona-lab-grid');
+    appendRequirementSelect(grid, 'Request type', draft.requestType, REQUIREMENT_REQUEST_TYPES, function (value) {
+      draft.requestType = value || 'persona';
+    }, false);
+    appendRequirementSelect(grid, 'Priority', draft.priority, REQUIREMENT_PRIORITIES, function (value) {
+      draft.priority = value || 'medium';
+    }, false);
+    var draftCustomer = markFocusKey(createEl('input', 'persona-lab-input'), 'requirements-draft-customer');
+    draftCustomer.value = draft.customerOrganizationId;
+    draftCustomer.placeholder = 'customer-org-id';
+    bindInput(draftCustomer, function () {
+      draft.customerOrganizationId = draftCustomer.value;
+    });
+    renderFieldGroup(grid, 'Customer org', draftCustomer);
+    wizard.appendChild(grid);
+
+    var purpose = markFocusKey(createEl('textarea', 'persona-lab-textarea'), 'requirements-purpose');
+    purpose.value = draft.purpose;
+    purpose.placeholder = 'What should this agent or change accomplish?';
+    bindInput(purpose, function () {
+      draft.purpose = purpose.value;
+    });
+    renderFieldGroup(wizard, 'Purpose', purpose);
+
+    var detailGrid = createEl('div', 'persona-lab-grid');
+    [
+      ['Skills', 'skillsText', 'skills, one per line'],
+      ['Guardrails', 'guardrailsText', 'guardrails, one per line'],
+      ['Outcomes', 'outcomesText', 'outcomes, one per line'],
+      ['Source refs', 'sourceRefsText', 'label | url, one per line'],
+    ].forEach(function (entry) {
+      var input = markFocusKey(createEl('textarea', 'persona-lab-textarea'), 'requirements-' + entry[1]);
+      input.value = draft[entry[1]];
+      input.placeholder = entry[2];
+      bindInput(input, function () {
+        draft[entry[1]] = input.value;
+      });
+      renderFieldGroup(detailGrid, entry[0], input);
+    });
+    wizard.appendChild(detailGrid);
+    panel.appendChild(wizard);
+
+    var preview = createEl('section', 'persona-lab-panel compact');
+    preview.appendChild(createEl('h3', null, 'MCP payload'));
+    preview.appendChild(createEl('pre', 'persona-lab-json', renderJson(state.requirementPayloadPreview || requirementPayloadForState(state))));
+    panel.appendChild(preview);
+
+    return panel;
+  }
+
   function renderTestSuitesPanel(state) {
     var panel = createEl('section', 'persona-lab-panel persona-lab-test-suites');
     appendSectionHeading(
@@ -8681,6 +8908,7 @@
 
     content.appendChild(renderPersonaEditorStepper(state));
     var overviewPanel = createPersonaWizardPanel(state, 'overview');
+    var requirementsPanel = createPersonaWizardPanel(state, 'requirements');
     var instructionsPanel = createPersonaWizardPanel(state, 'instructions');
     var runtimePanel = createPersonaWizardPanel(state, 'runtime');
     var skillsPanel = createPersonaWizardPanel(state, 'skills');
@@ -9197,9 +9425,11 @@
 
     reviewPanel.appendChild(renderLatestRunPanel(state));
     reviewPanel.appendChild(renderLatestBatchPanel(state));
+    requirementsPanel.appendChild(renderRequirementsPanel(state));
     testSuitesPanel.appendChild(renderTestSuitesPanel(state));
     insightsPanel.appendChild(renderInsightsPanel(state));
     content.appendChild(overviewPanel);
+    content.appendChild(requirementsPanel);
     content.appendChild(instructionsPanel);
     content.appendChild(runtimePanel);
     content.appendChild(skillsPanel);
