@@ -12,7 +12,7 @@ const TOOL_PREFIX = "tribe_x_persona_studio__";
 const DEFAULT_CONTROL_PLANE_BASE_URL = "https://dev.app.tribexai.com";
 const DEFAULT_DECIDR_BASE_URL = "https://app.decidrmcp.com";
 
-const REQUIREMENT_REQUEST_TYPES = ["persona", "bug", "feature"];
+const REQUIREMENT_REQUEST_TYPES = ["agent", "persona", "bug", "feature"];
 const REQUIREMENT_PRIORITIES = ["low", "medium", "high", "urgent"];
 const DECISION_STAGE_VALUES = [
   "BACKLOG",
@@ -58,6 +58,16 @@ const personaStudioToolDefinitions = [
     name: "persona-studio-open",
     title: "Open Persona Studio",
     description: "Return a lightweight payload for opening the Persona Studio renderer.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "persona-management-open",
+    title: "Open Persona Management",
+    description: "Return a lightweight payload for opening the Persona Management renderer.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -240,8 +250,11 @@ const personaStudioToolDefinitions = [
         requestType: { type: "string", enum: REQUIREMENT_REQUEST_TYPES },
         priority: { type: "string", enum: REQUIREMENT_PRIORITIES },
         status: { type: "string", enum: DECISION_STAGE_VALUES },
+        taskStatus: { type: "string", enum: TASK_STAGE_VALUES },
         ownerId: { type: "string" },
         implementerId: { type: "string" },
+        requesterId: { type: "string" },
+        requesterOrganizationId: { type: "string" },
         decidrProjectId: { type: "string" },
         includeBugTasks: { type: "boolean", default: false },
         limit: { type: "integer", default: 50 },
@@ -266,12 +279,16 @@ const personaStudioToolDefinitions = [
         personaKey: { type: "string" },
         requestType: { type: "string", enum: REQUIREMENT_REQUEST_TYPES },
         purpose: { type: "string" },
+        userStories: { type: "array", items: { type: "string" }, default: [] },
         skills: { type: "array", items: { type: "string" }, default: [] },
         guardrails: { type: "array", items: { type: "string" }, default: [] },
         outcomes: { type: "array", items: { type: "string" }, default: [] },
         priority: { type: "string", enum: REQUIREMENT_PRIORITIES, default: "medium" },
         sourceRefs: { type: "array", items: { type: "object" }, default: [] },
         compactSourceRefs: { type: "array", items: { type: "object" }, default: [] },
+        requesterId: { type: "string" },
+        requesterName: { type: "string" },
+        requesterOrganizationId: { type: "string" },
         requiresDurableDecision: { type: "boolean", default: false },
         decidrProjectId: { type: "string" },
         decidrDecisionId: { type: "string" },
@@ -285,6 +302,50 @@ const personaStudioToolDefinitions = [
         decidrCookie: { type: "string" },
       },
       required: ["organizationId", "requestType", "purpose"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "persona-requirement-detail",
+    title: "Get Persona Requirement Detail",
+    description:
+      "Fetch a DecidR decision or task plus timeline entries for Persona Management.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        recordType: { type: "string", enum: ["decision", "task"], default: "decision" },
+        id: { type: "string" },
+        decidrBaseUrl: { type: "string" },
+        decidrAuthorization: { type: "string" },
+        decidrCookie: { type: "string" },
+      },
+      required: ["organizationId", "id"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "persona-requirement-comment",
+    title: "Comment On Persona Requirement",
+    description:
+      "Post a requester or builder comment to the DecidR timeline for a Persona Management request.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        recordType: { type: "string", enum: ["decision", "task"], default: "decision" },
+        id: { type: "string" },
+        comment: { type: "string" },
+        customerOrganizationId: { type: "string" },
+        requesterId: { type: "string" },
+        requesterOrganizationId: { type: "string" },
+        personaKey: { type: "string" },
+        requestType: { type: "string", enum: REQUIREMENT_REQUEST_TYPES },
+        decidrBaseUrl: { type: "string" },
+        decidrAuthorization: { type: "string" },
+        decidrCookie: { type: "string" },
+      },
+      required: ["organizationId", "id", "comment"],
       additionalProperties: true,
     },
   },
@@ -609,7 +670,12 @@ function compactSourceRefs(args) {
 }
 
 function personaRequirementTags(args, requestType, priority) {
-  const tags = ["persona-studio", `request:${requestType}`, `priority:${priority}`];
+  const tags = [
+    "persona-studio",
+    "persona-management",
+    `request:${requestType}`,
+    `priority:${priority}`,
+  ];
   const personaKey = String(args.personaKey || "").trim();
   const customerOrganizationId = String(args.customerOrganizationId || "").trim();
   if (personaKey) tags.push(`persona:${personaKey}`);
@@ -619,6 +685,8 @@ function personaRequirementTags(args, requestType, priority) {
 
 function tagColor(name) {
   if (name === "persona-studio") return "#4f46e5";
+  if (name === "persona-management") return "#0f766e";
+  if (name.startsWith("request:agent")) return "#3056d3";
   if (name.startsWith("request:bug")) return "#dc2626";
   if (name.startsWith("request:feature")) return "#0891b2";
   if (name.startsWith("request:persona")) return "#7c3aed";
@@ -686,7 +754,9 @@ function requirementTitle(args, requestType) {
       ? "Bug"
       : requestType === "feature"
         ? "Feature"
-        : "Persona proposal";
+        : requestType === "persona"
+          ? "Persona proposal"
+          : "Agent request";
   const subject = personaKey ? ` for ${personaKey}` : "";
   return `${prefix}${subject}: ${String(args.purpose || "").trim().slice(0, 96)}`;
 }
@@ -695,17 +765,23 @@ function requirementDescription(args, requestType, priority) {
   const refs = compactSourceRefs(args);
   const blocks = [
     `Persona Studio requirement request.`,
+    `Persona Management request.`,
     ``,
     `Request type: ${requestType}`,
     `Priority: ${priority}`,
     `Organization: ${String(args.organizationId || "").trim()}`,
   ];
   if (args.customerOrganizationId) blocks.push(`Customer organization: ${String(args.customerOrganizationId).trim()}`);
+  if (args.requesterOrganizationId) blocks.push(`Requester organization: ${String(args.requesterOrganizationId).trim()}`);
+  if (args.requesterId) blocks.push(`Requester ID: ${String(args.requesterId).trim()}`);
+  if (args.requesterName) blocks.push(`Requester: ${String(args.requesterName).trim()}`);
   if (args.personaKey) blocks.push(`Persona: ${String(args.personaKey).trim()}`);
   blocks.push("", "Purpose:", String(args.purpose || "").trim());
+  const userStories = compactStringList(args.userStories);
   const skills = compactStringList(args.skills);
   const guardrails = compactStringList(args.guardrails);
   const outcomes = compactStringList(args.outcomes);
+  if (userStories.length) blocks.push("", "User stories:", userStories.map((item) => `- ${item}`).join("\n"));
   if (skills.length) blocks.push("", "Skills:", skills.map((item) => `- ${item}`).join("\n"));
   if (guardrails.length) blocks.push("", "Guardrails:", guardrails.map((item) => `- ${item}`).join("\n"));
   if (outcomes.length) blocks.push("", "Outcomes:", outcomes.map((item) => `- ${item}`).join("\n"));
@@ -723,6 +799,53 @@ function requirementDescription(args, requestType, priority) {
   }
   blocks.push("", "Tags:", personaRequirementTags(args, requestType, priority).join(", "));
   return blocks.join("\n");
+}
+
+function requirementPlanContent(args, requestType, priority) {
+  return [
+    `# ${requirementTitle(args, requestType)}`,
+    "",
+    "## Summary",
+    requirementDescription(args, requestType, priority),
+    "",
+    "## Implementation Notes",
+    "- DecidR is the canonical governance record.",
+    "- Persona Management requester comments should be stored on the DecidR timeline.",
+    "- AI conversation capture should use compact source refs only unless explicitly approved.",
+  ].join("\n");
+}
+
+async function saveRequirementPlanAndPropose(args, decisionId, requestType, priority) {
+  const result = {
+    planDocument: null,
+    transition: null,
+    warning: null,
+  };
+  try {
+    result.planDocument = await callDecidr(
+      args,
+      "POST",
+      `/api/decisions/${encodeURIComponent(decisionId)}/document-version`,
+      {
+        stage: "PLAN",
+        title: "Persona Management Request Plan",
+        versionLabel: "Persona Management intake",
+        content: requirementPlanContent(args, requestType, priority),
+      },
+    );
+    result.transition = await callDecidr(
+      args,
+      "POST",
+      `/api/decisions/${encodeURIComponent(decisionId)}/transition`,
+      { status: "PROPOSED" },
+    );
+  } catch (error) {
+    result.warning =
+      error instanceof Error
+        ? error.message
+        : String(error);
+  }
+  return result;
 }
 
 async function listPersonaRequirements(args) {
@@ -745,6 +868,7 @@ async function listPersonaRequirements(args) {
       ownerId: args.ownerId,
       implementerId: args.implementerId,
       projectId: args.decidrProjectId,
+      search: args.requesterId || args.requesterOrganizationId,
       take: args.limit || 50,
     })}`,
   );
@@ -765,7 +889,7 @@ async function listPersonaRequirements(args) {
       `/api/tasks${queryString({
         projectId: args.decidrProjectId,
         status: args.taskStatus,
-        search: "Persona Studio requirement request",
+        search: args.requesterId || args.requesterOrganizationId || "Persona Studio requirement request",
         take: args.limit || 50,
       })}`,
     );
@@ -809,22 +933,87 @@ async function submitPersonaRequirement(args) {
     projectId: parent.projectId,
     initiativeId: parent.initiativeId,
     bridgeId: parent.bridgeId,
-    ownerId: args.ownerId,
-    implementerId: args.implementerId,
-    status: args.status || "DRAFT",
-  };
+      ownerId: args.ownerId,
+      implementerId: args.implementerId,
+      status: "DRAFT",
+    };
   const decision = await callDecidr(args, "POST", "/api/decisions", decisionPayload);
   const decisionData = decision && decision.data ? decision.data : decision;
   const decisionId = decisionData && decisionData.id ? decisionData.id : null;
   const tags = decisionId
     ? await applyRequirementTags(args, decisionId, personaRequirementTags(args, requestType, priority))
     : [];
+  const lifecycle = decisionId
+    ? await saveRequirementPlanAndPropose(args, decisionId, requestType, priority)
+    : null;
   return {
     recordType: "decision",
     decision: decisionData,
     tags,
+    lifecycle,
     mapping: requestType === "bug" ? "durable-bug-decision" : `${requestType}-decision`,
   };
+}
+
+async function getPersonaRequirementDetail(args) {
+  requireString(args, "organizationId");
+  const id = encodeURIComponent(requireString(args, "id"));
+  const recordType = String(args.recordType || "decision").toLowerCase();
+  if (recordType !== "decision" && recordType !== "task") {
+    throw new Error("recordType must be decision or task.");
+  }
+  const entity = await callDecidr(
+    args,
+    "GET",
+    recordType === "task" ? `/api/tasks/${id}` : `/api/decisions/${id}`,
+  );
+  const timeline = await callDecidr(
+    args,
+    "GET",
+    `/api/timeline${queryString({
+      decisionId: recordType === "decision" ? args.id : undefined,
+      taskId: recordType === "task" ? args.id : undefined,
+      take: args.limit || 50,
+    })}`,
+  );
+  let documents = null;
+  if (recordType === "decision") {
+    try {
+      documents = await callDecidr(args, "GET", `/api/decisions/${id}/documents`);
+    } catch (_error) {
+      documents = null;
+    }
+  }
+  return {
+    recordType,
+    record: entity && entity.data ? entity.data : entity,
+    timeline: timeline && timeline.data ? timeline.data : timeline,
+    documents,
+  };
+}
+
+async function commentOnPersonaRequirement(args) {
+  requireString(args, "organizationId");
+  const id = requireString(args, "id");
+  const recordType = String(args.recordType || "decision").toLowerCase();
+  if (recordType !== "decision" && recordType !== "task") {
+    throw new Error("recordType must be decision or task.");
+  }
+  const comment = requireString(args, "comment");
+  return callDecidr(args, "POST", "/api/timeline", {
+    action: "COMMENTED",
+    description: comment,
+    decisionId: recordType === "decision" ? id : undefined,
+    taskId: recordType === "task" ? id : undefined,
+    metadata: {
+      source: "persona-management",
+      customerOrganizationId: args.customerOrganizationId || null,
+      requesterId: args.requesterId || null,
+      requesterOrganizationId: args.requesterOrganizationId || null,
+      personaKey: args.personaKey || null,
+      requestType: args.requestType || null,
+    },
+  });
 }
 
 async function updatePersonaRequirementStage(args) {
@@ -884,12 +1073,24 @@ async function proxyPersonaStudioTool(toolName, args = {}) {
     return { renderer: "persona_lab" };
   }
 
+  if (toolName === "persona-management-open") {
+    return { renderer: "persona_management" };
+  }
+
   if (toolName === "persona-requirements-list") {
     return listPersonaRequirements(args);
   }
 
   if (toolName === "persona-requirement-submit") {
     return submitPersonaRequirement(args);
+  }
+
+  if (toolName === "persona-requirement-detail") {
+    return getPersonaRequirementDetail(args);
+  }
+
+  if (toolName === "persona-requirement-comment") {
+    return commentOnPersonaRequirement(args);
   }
 
   if (toolName === "persona-requirement-update-stage") {

@@ -437,31 +437,17 @@ describe('Persona Studio renderer test suites', () => {
     expect(document.body.textContent).not.toContain('tribe-x-ai-plugin');
   });
 
-  it('renders Requirements and builds a DecidR payload preview', async () => {
+  it('keeps requirement intake out of the Persona Studio wizard', async () => {
     installRenderer();
     window.__renderers.persona_lab(document.getElementById('root'));
     await flush();
     await flush();
 
-    [...document.querySelectorAll('button')]
-      .find((button) => button.textContent.includes('Requirements'))
-      .click();
-    await flush();
-
-    expect(document.body.textContent).toContain('DecidR-backed requirements');
-    const purpose = [...document.querySelectorAll('textarea')]
-      .find((input) => input.placeholder.includes('What should this agent'));
-    purpose.value = 'Review acceptance criteria before engineering starts.';
-    purpose.dispatchEvent(new Event('input', { bubbles: true }));
-
-    [...document.querySelectorAll('button')]
-      .find((button) => button.textContent.includes('Build request payload'))
-      .click();
-    await flush();
-
-    expect(document.body.textContent).toContain('persona-requirement-submit');
-    expect(document.body.textContent).toContain('Review acceptance criteria before engineering starts.');
-    expect(document.body.textContent).toContain('general');
+    expect([...document.querySelectorAll('button')].some((button) =>
+      button.textContent.includes('Requirements')
+    )).toBe(false);
+    expect(document.body.textContent).not.toContain('DecidR-backed requirements');
+    expect(document.body.textContent).not.toContain('persona-requirement-submit');
   });
 
   it('saves skill-targeted tool contract checks', async () => {

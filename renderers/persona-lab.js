@@ -44,13 +44,12 @@
   var BATCH_STORAGE_KEY = '__personaLabBatchState';
   var PERSONA_EDITOR_WIZARD_STEPS = [
     { key: 'overview', eyebrow: 'Step 1', label: 'Overview' },
-    { key: 'requirements', eyebrow: 'Step 2', label: 'Requirements' },
-    { key: 'instructions', eyebrow: 'Step 3', label: 'Instructions' },
-    { key: 'runtime', eyebrow: 'Step 4', label: 'Runtime' },
-    { key: 'skills', eyebrow: 'Step 5', label: 'Skills' },
-    { key: 'review', eyebrow: 'Step 6', label: 'Review & Test' },
-    { key: 'test-suites', eyebrow: 'Step 7', label: 'Test Suites' },
-    { key: 'insights', eyebrow: 'Step 8', label: 'Insights' },
+    { key: 'instructions', eyebrow: 'Step 2', label: 'Instructions' },
+    { key: 'runtime', eyebrow: 'Step 3', label: 'Runtime' },
+    { key: 'skills', eyebrow: 'Step 4', label: 'Skills' },
+    { key: 'review', eyebrow: 'Step 5', label: 'Review & Test' },
+    { key: 'test-suites', eyebrow: 'Step 6', label: 'Test Suites' },
+    { key: 'insights', eyebrow: 'Step 7', label: 'Insights' },
   ];
   var modelSelectorSequence = 0;
 
@@ -282,9 +281,6 @@
         suiteRunDetails: null,
         suiteRunPollTimer: null,
         reviewingCaseRunIds: {},
-        requirementFilters: defaultRequirementFilters(),
-        requirementDraft: defaultRequirementDraft(),
-        requirementPayloadPreview: null,
         insights: null,
         insightsLoading: false,
         insightsError: '',
@@ -8908,7 +8904,6 @@
 
     content.appendChild(renderPersonaEditorStepper(state));
     var overviewPanel = createPersonaWizardPanel(state, 'overview');
-    var requirementsPanel = createPersonaWizardPanel(state, 'requirements');
     var instructionsPanel = createPersonaWizardPanel(state, 'instructions');
     var runtimePanel = createPersonaWizardPanel(state, 'runtime');
     var skillsPanel = createPersonaWizardPanel(state, 'skills');
@@ -9425,11 +9420,9 @@
 
     reviewPanel.appendChild(renderLatestRunPanel(state));
     reviewPanel.appendChild(renderLatestBatchPanel(state));
-    requirementsPanel.appendChild(renderRequirementsPanel(state));
     testSuitesPanel.appendChild(renderTestSuitesPanel(state));
     insightsPanel.appendChild(renderInsightsPanel(state));
     content.appendChild(overviewPanel);
-    content.appendChild(requirementsPanel);
     content.appendChild(instructionsPanel);
     content.appendChild(runtimePanel);
     content.appendChild(skillsPanel);

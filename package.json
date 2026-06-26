@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "check": "node --check renderers/persona-lab.js && node --check tools/relay-probe-server.mjs && node --check tools/relay-probe-executors.mjs"
+    "check": "node --check renderers/persona-lab.js && node --check renderers/persona-management.js && node --check tools/relay-probe-server.mjs && node --check tools/relay-probe-executors.mjs"
   },
   "devDependencies": {
     "happy-dom": "^17.6.3",

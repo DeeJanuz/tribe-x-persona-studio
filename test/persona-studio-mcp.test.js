@@ -23,8 +23,11 @@ describe("Persona Studio MCP tools", () => {
     expect(names).toContain("update-persona");
     expect(names).toContain("archive-persona");
     expect(names).toContain("create-test-suite");
+    expect(names).toContain("persona-management-open");
     expect(names).toContain("persona-requirement-submit");
     expect(names).toContain("persona-requirements-list");
+    expect(names).toContain("persona-requirement-detail");
+    expect(names).toContain("persona-requirement-comment");
     expect(names).toContain("persona-requirement-capture-conversation");
     expect(names).toContain("relay-probe");
   });
@@ -206,6 +209,18 @@ describe("Persona Studio MCP tools", () => {
           headers: { "Content-Type": "application/json" },
         });
       }
+      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/document-version") {
+        return new Response(JSON.stringify({ data: { id: "doc_version_1" } }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/transition") {
+        return new Response(JSON.stringify({ data: { id: "dec_1", status: "PROPOSED" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       throw new Error(`unexpected ${options.method} ${parsedUrl.pathname}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -229,6 +244,7 @@ describe("Persona Studio MCP tools", () => {
     expect(result.mapping).toBe("persona-decision");
     expect(tags.map((tag) => tag.name)).toEqual([
       "persona-studio",
+      "persona-management",
       "request:persona",
       "priority:high",
       "persona:qa-coach",
@@ -243,6 +259,90 @@ describe("Persona Studio MCP tools", () => {
         body: expect.stringContaining("Acceptance review"),
       }),
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app.decidrmcp.com/api/decisions/dec_1/document-version",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"stage":"PLAN"'),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://app.decidrmcp.com/api/decisions/dec_1/transition",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ status: "PROPOSED" }),
+      }),
+    );
+  });
+
+  it("loads Persona Management request details and posts timeline comments", async () => {
+    const fetchMock = vi.fn(async (url, options = {}) => {
+      const parsedUrl = new URL(url);
+      if (options.method === "GET" && parsedUrl.pathname === "/api/decisions/dec_1") {
+        return new Response(JSON.stringify({ data: { id: "dec_1", title: "Agent request" } }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "GET" && parsedUrl.pathname === "/api/timeline") {
+        expect(parsedUrl.searchParams.get("decisionId")).toBe("dec_1");
+        return new Response(JSON.stringify({ data: [{ id: "time_1" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "GET" && parsedUrl.pathname === "/api/decisions/dec_1/documents") {
+        return new Response(JSON.stringify({ data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (options.method === "POST" && parsedUrl.pathname === "/api/timeline") {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected ${options.method} ${parsedUrl.pathname}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const detail = parseToolText(
+      await handleToolCall("persona-requirement-detail", {
+        organizationId: "org_consultant",
+        recordType: "decision",
+        id: "dec_1",
+      }),
+    );
+    expect(detail.record.id).toBe("dec_1");
+    expect(detail.timeline).toEqual([{ id: "time_1" }]);
+
+    await handleToolCall("persona-requirement-comment", {
+      organizationId: "org_consultant",
+      recordType: "decision",
+      id: "dec_1",
+      comment: "Please require approval before sending email.",
+      customerOrganizationId: "customer_1",
+      personaKey: "email-agent",
+      requestType: "agent",
+    });
+
+    const commentBody = JSON.parse(
+      fetchMock.mock.calls.find(([url, options]) =>
+        new URL(url).pathname === "/api/timeline" && options.method === "POST"
+      )[1].body,
+    );
+    expect(commentBody).toMatchObject({
+      action: "COMMENTED",
+      description: "Please require approval before sending email.",
+      decisionId: "dec_1",
+      metadata: {
+        source: "persona-management",
+        customerOrganizationId: "customer_1",
+        personaKey: "email-agent",
+        requestType: "agent",
+      },
+    });
   });
 
   it("submits plain bug reports as DecidR tasks", async () => {

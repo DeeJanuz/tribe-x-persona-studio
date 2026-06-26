@@ -4,6 +4,7 @@
   "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.5/tribe-x-persona-studio.zip",
   "renderers": {
     "persona-studio-open": "persona_lab",
+    "persona-management-open": "persona_management",
     "list-personas": "rich_content",
     "get-persona": "rich_content",
     "create-persona": "rich_content",
@@ -15,6 +16,8 @@
     "run-test-suite": "rich_content",
     "persona-requirements-list": "rich_content",
     "persona-requirement-submit": "rich_content",
+    "persona-requirement-detail": "rich_content",
+    "persona-requirement-comment": "rich_content",
     "persona-requirement-update-stage": "rich_content",
     "persona-requirement-capture-conversation": "rich_content",
     "relay-probe": "rich_content"
@@ -33,6 +36,15 @@
       "display_mode": "replace",
       "standalone": true,
       "standalone_label": "Persona Studio"
+    },
+    {
+      "name": "persona_management",
+      "description": "Standalone Persona Management request dashboard for DecidR-backed agent proposals, feature requests, bugs, lifecycle status, and requester comments.",
+      "scope": "universal",
+      "data_hint": "{}",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Persona Management"
     }
   ],
   "registry_index": {
@@ -59,6 +71,13 @@
         ]
       },
       {
+        "name": "Persona Management",
+        "hint": "Open the DecidR-backed request dashboard for agent proposals, feature requests, bugs, implementation status, and comments.",
+        "tools": [
+          "persona-management-open"
+        ]
+      },
+      {
         "name": "Persona Test Suites",
         "hint": "Create, list, and run synthetic test suites for consultant-owned personas.",
         "tools": [
@@ -73,6 +92,8 @@
         "tools": [
           "persona-requirements-list",
           "persona-requirement-submit",
+          "persona-requirement-detail",
+          "persona-requirement-comment",
           "persona-requirement-update-stage",
           "persona-requirement-capture-conversation"
         ]
@@ -86,11 +107,13 @@
       }
     ],
     "renderer_names": [
-      "persona_lab"
+      "persona_lab",
+      "persona_management"
     ]
   },
   "tool_rules": {
     "persona-studio-open": "Return a payload for opening the Persona Studio renderer.",
+    "persona-management-open": "Return a payload for opening the Persona Management renderer.",
     "list-personas": "Use to discover consultant-owned personas. Requires a consultant organizationId and an authenticated dev control-plane cookie or bearer token supplied by the MCP host/environment.",
     "get-persona": "Fetch the full persona document before editing. Use the returned definition, draft, prompt, and customSkills as the base for update-persona.",
     "create-persona": "Create a consultant-owned draft persona through Persona Studio. Requires organizationId, key, and displayName.",
@@ -101,7 +124,9 @@
     "create-test-suite": "Create a synthetic test suite with cases containing prompts and checks. Requires organizationId, personaKey, and name.",
     "run-test-suite": "Launch a synthetic suite run for an existing Persona Studio test suite.",
     "persona-requirements-list": "List Persona Studio requirement decisions from DecidR by stable tags. Requires DecidR auth scoped to the selected organization.",
-    "persona-requirement-submit": "Submit a Persona Studio requirement to DecidR. Persona and feature requests create standard decisions; plain bugs create tasks unless requiresDurableDecision is true. Applies persona-studio, request, priority, persona, and customer tags to decisions.",
+    "persona-requirement-submit": "Submit a Persona Studio or Persona Management request to DecidR. Agent/persona and feature requests create standard decisions; plain bugs create tasks unless requiresDurableDecision is true. Applies persona-studio, persona-management, request, priority, persona, and customer tags to decisions.",
+    "persona-requirement-detail": "Load a DecidR decision/task detail with timeline entries for the Persona Management dashboard.",
+    "persona-requirement-comment": "Post a Persona Management requester/builder comment to the DecidR timeline with compact request metadata.",
     "persona-requirement-update-stage": "Move a Persona Studio requirement decision or bug task through the appropriate DecidR stage transition.",
     "persona-requirement-capture-conversation": "Capture compact AI conversation-derived requirement context as a DecidR audit event. Store summaries and refs only; do not pass raw transcripts.",
     "relay-probe": "Use only for Persona Studio and MCPViews relay integration tests. Pass a unique marker and ask the tool to echo it back so the operator can verify the plugin relay path."
@@ -111,6 +136,7 @@
     "Persona Studio is for creating and editing consultant-owned personas. Child organization assignment and enablement management remain outside this renderer in consultant/customer management flows.",
     "Persona Studio MCP tools are thin control-plane proxies. They must call the Persona Studio API with the selected consultant organization and authenticated control-plane context; they must not manipulate the database directly or use Wrangler.",
     "Persona Studio requirement tools compose DecidR API calls with DecidR auth scoped to the selected organization. DecidR remains the canonical governance store; requirement tools must store compact summaries/source refs and must not persist raw AI conversation transcripts by default.",
+    "Persona Management is the request-management renderer for agent proposals, feature requests, bugs, status visibility, and requester comments. It uses the same DecidR-backed requirement tools as Persona Studio and must not store a separate project-management database.",
     "The relay-probe tool is a local deterministic MCP tool for end-to-end testing of consultant-owned plugin relay grants. It requires tools/relay-probe-server.mjs to be running on http://127.0.0.1:4877/mcp."
   ]
 }
