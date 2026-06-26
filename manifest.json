@@ -123,12 +123,12 @@
     "list-test-suites": "List synthetic test suites for a persona in the selected consultant organization.",
     "create-test-suite": "Create a synthetic test suite with cases containing prompts and checks. Requires organizationId, personaKey, and name.",
     "run-test-suite": "Launch a synthetic suite run for an existing Persona Studio test suite.",
-    "persona-requirements-list": "List Persona Studio requirement decisions from DecidR by stable tags. Requires DecidR auth scoped to the selected organization.",
-    "persona-requirement-submit": "Submit a Persona Studio or Persona Management request to DecidR. Agent/persona and feature requests create standard decisions; plain bugs create tasks unless requiresDurableDecision is true. Applies persona-studio, persona-management, request, priority, persona, and customer tags to decisions.",
-    "persona-requirement-detail": "Load a DecidR decision/task detail with timeline entries for the Persona Management dashboard.",
-    "persona-requirement-comment": "Post a Persona Management requester/builder comment to the DecidR timeline with compact request metadata.",
+    "persona-requirements-list": "List Persona Management agent requests through the Tribe-X broker. Clients use Tribe-X auth; DecidR stays server-side.",
+    "persona-requirement-submit": "Submit a Persona Studio or Persona Management request through the Tribe-X broker. Agent/persona and feature requests become DecidR decisions; plain bugs become tasks unless requiresDurableDecision is true.",
+    "persona-requirement-detail": "Load a broker-scoped DecidR decision/task detail with timeline entries for the Persona Management dashboard.",
+    "persona-requirement-comment": "Post a Persona Management requester/builder comment through the Tribe-X broker with compact request metadata.",
     "persona-requirement-update-stage": "Move a Persona Studio requirement decision or bug task through the appropriate DecidR stage transition.",
-    "persona-requirement-capture-conversation": "Capture compact AI conversation-derived requirement context as a DecidR audit event. Store summaries and refs only; do not pass raw transcripts.",
+    "persona-requirement-capture-conversation": "Capture compact AI conversation-derived requirement context through the Tribe-X broker. Store summaries and refs only; do not pass raw transcripts.",
     "relay-probe": "Use only for Persona Studio and MCPViews relay integration tests. Pass a unique marker and ask the tool to echo it back so the operator can verify the plugin relay path."
   },
   "plugin_rules": [

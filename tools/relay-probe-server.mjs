@@ -240,11 +240,11 @@ const personaStudioToolDefinitions = [
     name: "persona-requirements-list",
     title: "List Persona Requirements",
     description:
-      "List Persona Studio requirement decisions from DecidR using stable tags and optional filters.",
+      "List Persona Management agent requests through the Tribe-X broker with optional filters.",
     inputSchema: {
       type: "object",
       properties: {
-        organizationId: { type: "string", description: "DecidR organization ID expected by the caller." },
+        organizationId: { type: "string", description: "Tribe-X customer or consultant organization ID." },
         customerOrganizationId: { type: "string" },
         personaKey: { type: "string" },
         requestType: { type: "string", enum: REQUIREMENT_REQUEST_TYPES },
@@ -258,9 +258,10 @@ const personaStudioToolDefinitions = [
         decidrProjectId: { type: "string" },
         includeBugTasks: { type: "boolean", default: false },
         limit: { type: "integer", default: 50 },
-        decidrBaseUrl: { type: "string" },
-        decidrAuthorization: { type: "string" },
-        decidrCookie: { type: "string" },
+        personaManagementBaseUrl: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+        useDirectDecidr: { type: "boolean", default: false },
       },
       required: ["organizationId"],
       additionalProperties: true,
@@ -270,7 +271,7 @@ const personaStudioToolDefinitions = [
     name: "persona-requirement-submit",
     title: "Submit Persona Requirement",
     description:
-      "Create a Persona Studio requirement in DecidR. Persona and feature requests become decisions; plain bugs become tasks unless requiresDurableDecision is true.",
+      "Create a Persona Management request through the Tribe-X broker. Persona and feature requests become DecidR decisions; plain bugs become tasks unless requiresDurableDecision is true.",
     inputSchema: {
       type: "object",
       properties: {
@@ -297,9 +298,10 @@ const personaStudioToolDefinitions = [
         assigneeId: { type: "string" },
         ownerId: { type: "string" },
         implementerId: { type: "string" },
-        decidrBaseUrl: { type: "string" },
-        decidrAuthorization: { type: "string" },
-        decidrCookie: { type: "string" },
+        personaManagementBaseUrl: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+        useDirectDecidr: { type: "boolean", default: false },
       },
       required: ["organizationId", "requestType", "purpose"],
       additionalProperties: true,
@@ -309,16 +311,17 @@ const personaStudioToolDefinitions = [
     name: "persona-requirement-detail",
     title: "Get Persona Requirement Detail",
     description:
-      "Fetch a DecidR decision or task plus timeline entries for Persona Management.",
+      "Fetch a broker-scoped DecidR decision or task plus timeline entries for Persona Management.",
     inputSchema: {
       type: "object",
       properties: {
         organizationId: { type: "string" },
         recordType: { type: "string", enum: ["decision", "task"], default: "decision" },
         id: { type: "string" },
-        decidrBaseUrl: { type: "string" },
-        decidrAuthorization: { type: "string" },
-        decidrCookie: { type: "string" },
+        personaManagementBaseUrl: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+        useDirectDecidr: { type: "boolean", default: false },
       },
       required: ["organizationId", "id"],
       additionalProperties: true,
@@ -328,7 +331,7 @@ const personaStudioToolDefinitions = [
     name: "persona-requirement-comment",
     title: "Comment On Persona Requirement",
     description:
-      "Post a requester or builder comment to the DecidR timeline for a Persona Management request.",
+      "Post a requester or builder comment through the Tribe-X broker for a Persona Management request.",
     inputSchema: {
       type: "object",
       properties: {
@@ -341,9 +344,10 @@ const personaStudioToolDefinitions = [
         requesterOrganizationId: { type: "string" },
         personaKey: { type: "string" },
         requestType: { type: "string", enum: REQUIREMENT_REQUEST_TYPES },
-        decidrBaseUrl: { type: "string" },
-        decidrAuthorization: { type: "string" },
-        decidrCookie: { type: "string" },
+        personaManagementBaseUrl: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+        useDirectDecidr: { type: "boolean", default: false },
       },
       required: ["organizationId", "id", "comment"],
       additionalProperties: true,
@@ -372,11 +376,12 @@ const personaStudioToolDefinitions = [
     name: "persona-requirement-capture-conversation",
     title: "Capture Persona Requirement Conversation",
     description:
-      "Capture compact AI conversation-derived requirement context as a DecidR audit event. Raw transcript text is not stored by default.",
+      "Capture compact AI conversation-derived requirement context through the Tribe-X broker. Raw transcript text is not stored by default.",
     inputSchema: {
       type: "object",
       properties: {
         organizationId: { type: "string" },
+        id: { type: "string", description: "Persona Management request mapping ID." },
         decidrProjectId: { type: "string" },
         decisionId: { type: "string" },
         taskId: { type: "string" },
@@ -387,7 +392,10 @@ const personaStudioToolDefinitions = [
         compactSourceRefs: { type: "array", items: { type: "object" }, default: [] },
         sourceRefs: { type: "array", items: { type: "object" }, default: [] },
         externalReferenceId: { type: "string" },
-        decidrBaseUrl: { type: "string" },
+        personaManagementBaseUrl: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+        useDirectDecidr: { type: "boolean", default: false },
         decidrAuthorization: { type: "string" },
         decidrCookie: { type: "string" },
       },
@@ -504,6 +512,14 @@ function controlPlaneBaseUrl(args = {}) {
   ).replace(/\/$/, "");
 }
 
+function personaManagementBaseUrl(args = {}) {
+  return String(
+    args.personaManagementBaseUrl ||
+      process.env.TRIBEX_PERSONA_MANAGEMENT_API_BASE_URL ||
+      controlPlaneBaseUrl(args),
+  ).replace(/\/$/, "");
+}
+
 function authHeaders(args = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -596,6 +612,31 @@ async function callControlPlane(args, method, path, body) {
   return payload;
 }
 
+async function callPersonaManagementBroker(args, method, path, body) {
+  const response = await fetch(`${personaManagementBaseUrl(args)}${path}`, {
+    method,
+    headers: authHeaders(args),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let payload = {};
+  if (text.trim()) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { text };
+    }
+  }
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && payload.error
+        ? payload.error
+        : `Persona Management API request failed with HTTP ${response.status}.`;
+    throw new Error(`${message}`);
+  }
+  return payload;
+}
+
 async function callDecidr(args, method, path, body) {
   const response = await fetch(`${decidrBaseUrl(args)}${path}`, {
     method,
@@ -619,6 +660,17 @@ async function callDecidr(args, method, path, body) {
     throw new Error(`${message}`);
   }
   return payload;
+}
+
+function useDirectDecidrRequirements(args = {}) {
+  return (
+    args.useDirectDecidr === true ||
+    process.env.PERSONA_REQUIREMENTS_DIRECT_DECIDR === "1"
+  );
+}
+
+function personaManagementPath(args, suffix) {
+  return `/organizations/${encodeURIComponent(requireString(args, "organizationId"))}/persona-management${suffix}`;
 }
 
 function requireOneOf(value, allowed, key) {
@@ -848,8 +900,83 @@ async function saveRequirementPlanAndPropose(args, decisionId, requestType, prio
   return result;
 }
 
+function brokerRequirementTags(mapping, record) {
+  const tags = [];
+  const recordTags = Array.isArray(record && record.tags) ? record.tags : [];
+  recordTags.forEach((tag) => {
+    if (typeof tag === "string") tags.push(tag);
+    else if (tag && tag.name) tags.push(String(tag.name));
+  });
+  const requestType = mapping.requestType || (record && record.requestType);
+  const priority = mapping.priority || (record && record.priority);
+  const personaKey = mapping.personaKey || (record && record.personaKey);
+  const customerOrganizationId = mapping.customerOrganizationId;
+  if (requestType) tags.push(`request:${requestType}`);
+  if (priority) tags.push(`priority:${priority}`);
+  if (personaKey) tags.push(`persona:${personaKey}`);
+  if (customerOrganizationId) tags.push(`customer:${customerOrganizationId}`);
+  tags.push("persona-management", "tribex-ai");
+  return Array.from(new Set(tags.filter(Boolean)));
+}
+
+function brokerRequirementRecord(row) {
+  const mapping = row && row.request ? row.request : row || {};
+  const record = row && row.record ? row.record : row || {};
+  const recordType = String(mapping.recordType || record.recordType || "").toUpperCase();
+  return {
+    ...record,
+    id: mapping.id || record.id,
+    decidrRecordId: mapping.decidrRecordId || record.id,
+    decidrProjectId: mapping.decidrProjectId || record.projectId,
+    recordType: recordType === "TASK" ? "task" : "decision",
+    title: (record && record.title) || mapping.title || "Untitled request",
+    description: (record && record.description) || "",
+    status: (record && record.status) || mapping.status || "",
+    priority: mapping.priority || record.priority || null,
+    requestType: mapping.requestType || record.requestType || null,
+    personaKey: mapping.personaKey || record.personaKey || null,
+    customerOrganizationId: mapping.customerOrganizationId || null,
+    createdAt: (record && record.createdAt) || mapping.createdAt || "",
+    updatedAt: (record && record.updatedAt) || mapping.updatedAt || "",
+    tags: brokerRequirementTags(mapping, record),
+    raw: row,
+  };
+}
+
+function normalizeBrokerRequirementList(payload) {
+  const rows = Array.isArray(payload && payload.data) ? payload.data : [];
+  const records = rows.map(brokerRequirementRecord);
+  return {
+    decisions: records.filter((record) => record.recordType !== "task"),
+    bugTasks: records.filter((record) => record.recordType === "task"),
+    data: rows,
+    total: typeof payload.total === "number" ? payload.total : records.length,
+  };
+}
+
 async function listPersonaRequirements(args) {
   requireString(args, "organizationId");
+  if (!useDirectDecidrRequirements(args)) {
+    const payload = await callPersonaManagementBroker(
+      args,
+      "GET",
+      personaManagementPath(
+        args,
+        `/requests${queryString({
+          customerOrganizationId: args.customerOrganizationId,
+          personaKey: args.personaKey,
+          requestType: args.requestType,
+          priority: args.priority,
+          status: args.status || args.taskStatus,
+          ownerId: args.ownerId,
+          requesterId: args.requesterId,
+          search: args.search,
+        })}`,
+      ),
+    );
+    return normalizeBrokerRequirementList(payload);
+  }
+
   const tagNames = personaRequirementTags(
     args,
     optionalOneOf(args.requestType, REQUIREMENT_REQUEST_TYPES, "persona", "requestType"),
@@ -902,6 +1029,49 @@ async function submitPersonaRequirement(args) {
   const requestType = requireOneOf(args.requestType, REQUIREMENT_REQUEST_TYPES, "requestType");
   const priority = optionalOneOf(args.priority, REQUIREMENT_PRIORITIES, "medium", "priority");
   const purpose = requireString(args, "purpose");
+  if (!useDirectDecidrRequirements(args)) {
+    const payload = await callPersonaManagementBroker(
+      args,
+      "POST",
+      personaManagementPath(args, "/requests"),
+      {
+        customerOrganizationId: args.customerOrganizationId || args.requesterOrganizationId,
+        title: args.title,
+        requestType,
+        personaKey: args.personaKey,
+        purpose,
+        userStories: compactStringList(args.userStories),
+        skills: compactStringList(args.skills),
+        capabilities: compactStringList(args.capabilities),
+        guardrails: compactStringList(args.guardrails),
+        outcomes: compactStringList(args.outcomes),
+        priority,
+        sourceRefs: compactSourceRefs(args),
+        requiresDurableDecision: args.requiresDurableDecision === true,
+        metadata: {
+          requesterId: args.requesterId || null,
+          requesterName: args.requesterName || null,
+          requesterOrganizationId: args.requesterOrganizationId || null,
+        },
+      },
+    );
+    return {
+      recordType: String(payload && payload.request && payload.request.recordType || "").toLowerCase(),
+      request: payload.request || null,
+      record: payload.record || null,
+      decision:
+        payload.record && payload.request && payload.request.recordType === "DECISION"
+          ? payload.record
+          : null,
+      task:
+        payload.record && payload.request && payload.request.recordType === "TASK"
+          ? payload.record
+          : null,
+      planDocument: payload.planDocument || null,
+      mapping: "tribex-broker",
+    };
+  }
+
   const description = requirementDescription({ ...args, purpose }, requestType, priority);
 
   if (requestType === "bug" && args.requiresDurableDecision !== true) {
@@ -957,7 +1127,23 @@ async function submitPersonaRequirement(args) {
 
 async function getPersonaRequirementDetail(args) {
   requireString(args, "organizationId");
-  const id = encodeURIComponent(requireString(args, "id"));
+  const rawId = requireString(args, "id");
+  if (!useDirectDecidrRequirements(args)) {
+    const payload = await callPersonaManagementBroker(
+      args,
+      "GET",
+      personaManagementPath(args, `/requests/${encodeURIComponent(rawId)}`),
+    );
+    const record = payload && payload.record ? payload.record : null;
+    return {
+      request: payload && payload.request ? payload.request : null,
+      record,
+      recordType: record && record.recordType ? String(record.recordType).toLowerCase() : args.recordType || "decision",
+      timeline: record && Array.isArray(record.timeline) ? record.timeline : [],
+      documents: record && Array.isArray(record.documents) ? record.documents : null,
+    };
+  }
+  const id = encodeURIComponent(rawId);
   const recordType = String(args.recordType || "decision").toLowerCase();
   if (recordType !== "decision" && recordType !== "task") {
     throw new Error("recordType must be decision or task.");
@@ -995,6 +1181,22 @@ async function getPersonaRequirementDetail(args) {
 async function commentOnPersonaRequirement(args) {
   requireString(args, "organizationId");
   const id = requireString(args, "id");
+  if (!useDirectDecidrRequirements(args)) {
+    const comment = requireString(args, "comment");
+    return callPersonaManagementBroker(
+      args,
+      "POST",
+      personaManagementPath(args, `/requests/${encodeURIComponent(id)}/comments`),
+      {
+        comment,
+        sourceRefs: compactSourceRefs(args),
+        customerOrganizationId: args.customerOrganizationId || null,
+        personaKey: args.personaKey || null,
+        requestType: args.requestType || null,
+      },
+    );
+  }
+
   const recordType = String(args.recordType || "decision").toLowerCase();
   if (recordType !== "decision" && recordType !== "task") {
     throw new Error("recordType must be decision or task.");
@@ -1033,6 +1235,20 @@ async function updatePersonaRequirementStage(args) {
 
 async function capturePersonaRequirementConversation(args) {
   requireString(args, "organizationId");
+  if (!useDirectDecidrRequirements(args)) {
+    const id = requireString(args, "id");
+    const summary = requireString(args, "summary");
+    return callPersonaManagementBroker(
+      args,
+      "POST",
+      personaManagementPath(args, `/requests/${encodeURIComponent(id)}/source-refs`),
+      {
+        summary,
+        sourceRefs: compactSourceRefs(args),
+      },
+    );
+  }
+
   const projectId = requireString(args, "decidrProjectId");
   const summary = requireString(args, "summary");
   const refs = compactSourceRefs(args);

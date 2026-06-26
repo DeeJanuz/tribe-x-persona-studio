@@ -514,7 +514,7 @@
     if (state.loading) return Promise.resolve(null);
     if (!organizationIdForState(state)) {
       state.loaded = true;
-      state.error = 'Select a DecidR organization before loading requests.';
+      state.error = 'Select a Tribe-X organization before loading requests.';
       renderState(state);
       return Promise.resolve(null);
     }
