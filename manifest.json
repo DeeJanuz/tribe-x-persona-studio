@@ -1,7 +1,7 @@
 {
   "name": "tribe-x-persona-studio",
-  "version": "0.1.1-rc.5",
-  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.5/tribe-x-persona-studio.zip",
+  "version": "0.1.1-rc.6",
+  "download_url": "https://github.com/DeeJanuz/tribe-x-persona-studio/releases/download/0.1.1-rc.6/tribe-x-persona-studio.zip",
   "renderers": {
     "persona-studio-open": "persona_lab",
     "persona-management-open": "persona_management",
