@@ -178,46 +178,19 @@ describe("Persona Studio MCP tools", () => {
     );
   });
 
-  it("submits persona proposals as tagged DecidR decisions", async () => {
-    const tags = [];
+  it("submits persona proposals through the Tribe-X broker", async () => {
     const fetchMock = vi.fn(async (url, options = {}) => {
       const parsedUrl = new URL(url);
-      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions") {
-        return new Response(JSON.stringify({ data: { id: "dec_1" } }), {
+      if (
+        options.method === "POST" &&
+        parsedUrl.pathname === "/organizations/org_consultant/persona-management/requests"
+      ) {
+        return new Response(JSON.stringify({
+          request: { id: "pmr_1", recordType: "DECISION", decidrRecordId: "dec_1" },
+          record: { id: "dec_1", title: "QA Coach", status: "PROPOSED" },
+          planDocument: { id: "doc_version_1" },
+        }), {
           status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "GET" && parsedUrl.pathname === "/api/tags") {
-        return new Response(JSON.stringify({ data: tags }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "POST" && parsedUrl.pathname === "/api/tags") {
-        const body = JSON.parse(options.body);
-        const tag = { id: `tag_${tags.length + 1}`, name: body.name };
-        tags.push(tag);
-        return new Response(JSON.stringify({ data: tag }), {
-          status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/tags") {
-        return new Response(JSON.stringify({ success: true }), {
-          status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/document-version") {
-        return new Response(JSON.stringify({ data: { id: "doc_version_1" } }), {
-          status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "POST" && parsedUrl.pathname === "/api/decisions/dec_1/transition") {
-        return new Response(JSON.stringify({ data: { id: "dec_1", status: "PROPOSED" } }), {
-          status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
@@ -236,69 +209,59 @@ describe("Persona Studio MCP tools", () => {
         guardrails: ["No customer secrets"],
         outcomes: ["Clear checklist"],
         priority: "high",
-        decidrAuthorization: "Bearer decidr-token",
+        authorization: "Bearer tribex-token",
       }),
     );
 
     expect(result.recordType).toBe("decision");
-    expect(result.mapping).toBe("persona-decision");
-    expect(tags.map((tag) => tag.name)).toEqual([
-      "persona-studio",
-      "persona-management",
-      "request:persona",
-      "priority:high",
-      "persona:qa-coach",
-    ]);
+    expect(result.mapping).toBe("tribex-broker");
+    expect(result.request.id).toBe("pmr_1");
+    expect(result.decision.id).toBe("dec_1");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.decidrmcp.com/api/decisions",
+      "https://dev.app.tribexai.com/organizations/org_consultant/persona-management/requests",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
-          Authorization: "Bearer decidr-token",
+          Authorization: "Bearer tribex-token",
         }),
         body: expect.stringContaining("Acceptance review"),
       }),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.decidrmcp.com/api/decisions/dec_1/document-version",
-      expect.objectContaining({
-        method: "POST",
-        body: expect.stringContaining('"stage":"PLAN"'),
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.decidrmcp.com/api/decisions/dec_1/transition",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ status: "PROPOSED" }),
-      }),
-    );
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toMatchObject({
+      requestType: "persona",
+      personaKey: "qa-coach",
+      priority: "high",
+      skills: ["Acceptance review"],
+    });
   });
 
-  it("loads Persona Management request details and posts timeline comments", async () => {
+  it("loads Persona Management request details and posts brokered comments", async () => {
     const fetchMock = vi.fn(async (url, options = {}) => {
       const parsedUrl = new URL(url);
-      if (options.method === "GET" && parsedUrl.pathname === "/api/decisions/dec_1") {
-        return new Response(JSON.stringify({ data: { id: "dec_1", title: "Agent request" } }), {
+      if (
+        options.method === "GET" &&
+        parsedUrl.pathname === "/organizations/org_consultant/persona-management/requests/pmr_1"
+      ) {
+        return new Response(JSON.stringify({
+          request: { id: "pmr_1", recordType: "DECISION" },
+          record: {
+            id: "dec_1",
+            recordType: "decision",
+            title: "Agent request",
+            timeline: [{ id: "time_1" }],
+            documents: [],
+          },
+        }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (options.method === "GET" && parsedUrl.pathname === "/api/timeline") {
-        expect(parsedUrl.searchParams.get("decisionId")).toBe("dec_1");
-        return new Response(JSON.stringify({ data: [{ id: "time_1" }] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "GET" && parsedUrl.pathname === "/api/decisions/dec_1/documents") {
-        return new Response(JSON.stringify({ data: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (options.method === "POST" && parsedUrl.pathname === "/api/timeline") {
-        return new Response(JSON.stringify({ success: true }), {
+      if (
+        options.method === "POST" &&
+        parsedUrl.pathname === "/organizations/org_consultant/persona-management/requests/pmr_1/comments"
+      ) {
+        return new Response(JSON.stringify({ event: { id: "time_2" } }), {
           status: 201,
           headers: { "Content-Type": "application/json" },
         });
@@ -311,7 +274,7 @@ describe("Persona Studio MCP tools", () => {
       await handleToolCall("persona-requirement-detail", {
         organizationId: "org_consultant",
         recordType: "decision",
-        id: "dec_1",
+        id: "pmr_1",
       }),
     );
     expect(detail.record.id).toBe("dec_1");
@@ -320,7 +283,7 @@ describe("Persona Studio MCP tools", () => {
     await handleToolCall("persona-requirement-comment", {
       organizationId: "org_consultant",
       recordType: "decision",
-      id: "dec_1",
+      id: "pmr_1",
       comment: "Please require approval before sending email.",
       customerOrganizationId: "customer_1",
       personaKey: "email-agent",
@@ -329,29 +292,35 @@ describe("Persona Studio MCP tools", () => {
 
     const commentBody = JSON.parse(
       fetchMock.mock.calls.find(([url, options]) =>
-        new URL(url).pathname === "/api/timeline" && options.method === "POST"
+        new URL(url).pathname === "/organizations/org_consultant/persona-management/requests/pmr_1/comments" &&
+        options.method === "POST"
       )[1].body,
     );
     expect(commentBody).toMatchObject({
-      action: "COMMENTED",
-      description: "Please require approval before sending email.",
-      decisionId: "dec_1",
-      metadata: {
-        source: "persona-management",
-        customerOrganizationId: "customer_1",
-        personaKey: "email-agent",
-        requestType: "agent",
-      },
+      comment: "Please require approval before sending email.",
+      customerOrganizationId: "customer_1",
+      personaKey: "email-agent",
+      requestType: "agent",
     });
   });
 
-  it("submits plain bug reports as DecidR tasks", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: { id: "task_1" } }), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+  it("submits plain bug reports through the Tribe-X broker", async () => {
+    const fetchMock = vi.fn(async (url, options = {}) => {
+      const parsedUrl = new URL(url);
+      if (
+        options.method === "POST" &&
+        parsedUrl.pathname === "/organizations/org_consultant/persona-management/requests"
+      ) {
+        return new Response(JSON.stringify({
+          request: { id: "pmr_bug", recordType: "TASK", decidrRecordId: "task_1" },
+          record: { id: "task_1", title: "Citation bug", status: "TODO" },
+        }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected ${options.method} ${parsedUrl.pathname}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = parseToolText(
@@ -365,19 +334,20 @@ describe("Persona Studio MCP tools", () => {
     );
 
     expect(result.recordType).toBe("task");
-    expect(result.mapping).toBe("bug-task");
+    expect(result.mapping).toBe("tribex-broker");
+    expect(result.task.id).toBe("task_1");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.decidrmcp.com/api/tasks",
+      "https://dev.app.tribexai.com/organizations/org_consultant/persona-management/requests",
       expect.objectContaining({
         method: "POST",
-        body: expect.stringContaining("request:bug"),
+        body: expect.stringContaining('"requestType":"bug"'),
       }),
     );
   });
 
-  it("captures conversation summaries as compact DecidR audit events", async () => {
+  it("captures conversation summaries as compact brokered source refs", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: { id: "audit_1" } }), {
+      new Response(JSON.stringify({ event: { id: "audit_1" } }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
       }),
@@ -386,8 +356,7 @@ describe("Persona Studio MCP tools", () => {
 
     await handleToolCall("persona-requirement-capture-conversation", {
       organizationId: "org_consultant",
-      decidrProjectId: "proj_1",
-      decisionId: "dec_1",
+      id: "pmr_1",
       personaKey: "qa-coach",
       requestType: "feature",
       summary: "User asked the persona to include compliance escalation steps.",
@@ -396,15 +365,14 @@ describe("Persona Studio MCP tools", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://app.decidrmcp.com/api/audit-events",
+      "https://dev.app.tribexai.com/organizations/org_consultant/persona-management/requests/pmr_1/source-refs",
       expect.objectContaining({
         method: "POST",
-        body: expect.stringContaining("compact-summary-no-raw-transcript"),
+        body: expect.stringContaining("compliance escalation steps"),
       }),
     );
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.decisionIds).toEqual(["dec_1"]);
-    expect(body.payload.compactSourceRefs).toEqual([
+    expect(body.sourceRefs).toEqual([
       { label: "AI thread", threadId: "thread_1" },
     ]);
   });
