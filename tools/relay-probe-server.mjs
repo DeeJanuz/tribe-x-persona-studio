@@ -221,14 +221,127 @@ const personaStudioToolDefinitions = [
     },
   },
   {
-    name: "run-test-suite",
-    title: "Run Test Suite",
-    description: "Launch a Persona Studio synthetic test-suite run.",
+    name: "validate-test-suite-definition",
+    title: "Validate Test Suite Definition",
+    description: "Validate a TestSuiteDefinitionV2 without saving or launching it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        definition: { type: "object" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId", "definition"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "create-test-suite-v2",
+    title: "Create Test Suite V2",
+    description: "Create a persona-scoped suite and immutable TestSuiteDefinitionV2 version.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        personaKey: { type: "string" },
+        definition: { type: "object" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId", "personaKey", "definition"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "import-test-suite-definition",
+    title: "Import Test Suite Definition",
+    description: "Import a JSON or YAML TestSuiteDefinitionV2 into a persona-scoped suite.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        personaKey: { type: "string" },
+        format: { type: "string", enum: ["json", "yaml"] },
+        source: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId", "personaKey", "format", "source"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "export-test-suite-definition",
+    title: "Export Test Suite Definition",
+    description: "Export the latest or selected immutable suite version as JSON or YAML.",
     inputSchema: {
       type: "object",
       properties: {
         organizationId: { type: "string" },
         suiteId: { type: "string" },
+        versionId: { type: "string" },
+        format: { type: "string", enum: ["json", "yaml"], default: "json" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId", "suiteId"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "inspect-test-suite",
+    title: "Inspect Test Suite",
+    description: "Inspect a suite, expanded run executions, or one execution trace.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        suiteId: { type: "string" },
+        runId: { type: "string" },
+        caseRunId: { type: "string" },
+        cursor: { type: "string" },
+        limit: { type: "number" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "suggest-test-suite",
+    title: "Suggest Test Suite Changes",
+    description: "Return suggestion-only Test Copilot changes that require consultant acceptance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        suiteId: { type: "string" },
+        suiteVersionId: { type: "string" },
+        authorization: { type: "string" },
+        cookie: { type: "string" },
+      },
+      required: ["organizationId", "suiteId"],
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "run-test-suite",
+    title: "Run Test Suite",
+    description:
+      "Deprecated launch bridge. Requires a Persona Studio preflight confirmation token; without one it opens the Studio launch review payload.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        organizationId: { type: "string" },
+        suiteId: { type: "string" },
+        suiteVersionId: { type: "string" },
+        confirmationToken: { type: "string" },
+        datasetUploadIds: { type: "array", items: { type: "string" } },
+        datasetUnits: { type: "array", items: { type: "object" } },
+        selectedAxes: { type: "object" },
+        repetitions: { type: "number" },
         authorization: { type: "string" },
         cookie: { type: "string" },
       },
@@ -1404,10 +1517,120 @@ async function proxyPersonaStudioTool(toolName, args = {}) {
     });
   }
 
+  if (toolName === "validate-test-suite-definition") {
+    return callControlPlane(args, "POST", "/admin/persona-studio/test-suites/validate", {
+      organizationId: requireString(args, "organizationId"),
+      definition: args.definition,
+    });
+  }
+
+  if (toolName === "create-test-suite-v2") {
+    const personaKey = encodeURIComponent(requireString(args, "personaKey"));
+    return callControlPlane(
+      args,
+      "POST",
+      `/admin/persona-studio/personas/${personaKey}/test-suites/import`,
+      {
+        organizationId: requireString(args, "organizationId"),
+        format: "json",
+        source: JSON.stringify(args.definition),
+      },
+    );
+  }
+
+  if (toolName === "import-test-suite-definition") {
+    const personaKey = encodeURIComponent(requireString(args, "personaKey"));
+    return callControlPlane(
+      args,
+      "POST",
+      `/admin/persona-studio/personas/${personaKey}/test-suites/import`,
+      {
+        organizationId: requireString(args, "organizationId"),
+        format: requireString(args, "format"),
+        source: requireString(args, "source"),
+      },
+    );
+  }
+
+  if (toolName === "export-test-suite-definition") {
+    const suiteId = encodeURIComponent(requireString(args, "suiteId"));
+    return callControlPlane(
+      args,
+      "GET",
+      `/admin/persona-studio/test-suites/${suiteId}/export${queryString({
+        organizationId: requireString(args, "organizationId"),
+        format: args.format || "json",
+        versionId: args.versionId,
+      })}`,
+    );
+  }
+
+  if (toolName === "inspect-test-suite") {
+    const organizationId = requireString(args, "organizationId");
+    if (args.caseRunId) {
+      return callControlPlane(
+        args,
+        "GET",
+        `/admin/persona-studio/test-case-runs/${encodeURIComponent(args.caseRunId)}/trace${queryString({
+          cursor: args.cursor,
+          limit: args.limit,
+        })}`,
+      );
+    }
+    if (args.runId) {
+      return callControlPlane(
+        args,
+        "GET",
+        `/admin/persona-studio/test-suite-runs/${encodeURIComponent(args.runId)}/executions${queryString({
+          cursor: args.cursor,
+          limit: args.limit,
+        })}`,
+      );
+    }
+    const suiteId = encodeURIComponent(requireString(args, "suiteId"));
+    return callControlPlane(
+      args,
+      "GET",
+      `/admin/persona-studio/test-suites/${suiteId}${queryString({ organizationId })}`,
+    );
+  }
+
+  if (toolName === "suggest-test-suite") {
+    const suiteId = encodeURIComponent(requireString(args, "suiteId"));
+    return callControlPlane(
+      args,
+      "POST",
+      `/admin/persona-studio/test-suites/${suiteId}/copilot/suggestions`,
+      {
+        organizationId: requireString(args, "organizationId"),
+        suiteVersionId: args.suiteVersionId,
+      },
+    );
+  }
+
   if (toolName === "run-test-suite") {
     const suiteId = encodeURIComponent(requireString(args, "suiteId"));
+    if (!args.confirmationToken || !args.suiteVersionId) {
+      return {
+        launched: false,
+        deprecated: true,
+        requiresStudioReview: true,
+        renderer: "persona_lab",
+        suiteId: requireString(args, "suiteId"),
+        organizationId: requireString(args, "organizationId"),
+        message:
+          "Open Persona Studio, review the launch expansion/cost/thresholds, and confirm there. Then retry with its short-lived confirmation token.",
+      };
+    }
     return callControlPlane(args, "POST", `/admin/persona-studio/test-suites/${suiteId}/runs`, {
       organizationId: requireString(args, "organizationId"),
+      suiteVersionId: requireString(args, "suiteVersionId"),
+      confirmationToken: requireString(args, "confirmationToken"),
+      datasetUploadIds: Array.isArray(args.datasetUploadIds) ? args.datasetUploadIds : undefined,
+      datasetUnits: Array.isArray(args.datasetUnits) ? args.datasetUnits : undefined,
+      selectedAxes:
+        args.selectedAxes && typeof args.selectedAxes === "object" ? args.selectedAxes : undefined,
+      repetitions: typeof args.repetitions === "number" ? args.repetitions : undefined,
     });
   }
 

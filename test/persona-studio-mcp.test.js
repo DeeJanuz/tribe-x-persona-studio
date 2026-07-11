@@ -23,6 +23,12 @@ describe("Persona Studio MCP tools", () => {
     expect(names).toContain("update-persona");
     expect(names).toContain("archive-persona");
     expect(names).toContain("create-test-suite");
+    expect(names).toContain("validate-test-suite-definition");
+    expect(names).toContain("create-test-suite-v2");
+    expect(names).toContain("import-test-suite-definition");
+    expect(names).toContain("export-test-suite-definition");
+    expect(names).toContain("inspect-test-suite");
+    expect(names).toContain("suggest-test-suite");
     expect(names).toContain("persona-management-open");
     expect(names).toContain("persona-requirement-submit");
     expect(names).toContain("persona-requirements-list");
@@ -173,6 +179,77 @@ describe("Persona Studio MCP tools", () => {
               checks: [{ type: "contains", label: "asks", value: "acceptance criteria" }],
             },
           ],
+        }),
+      }),
+    );
+  });
+
+  it("routes V2 authoring and keeps launch manual without a Studio token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ valid: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const definition = { schemaVersion: "2.0", name: "Interview" };
+    const validation = parseToolText(
+      await handleToolCall("validate-test-suite-definition", {
+        organizationId: "org_consultant",
+        definition,
+      }),
+    );
+    expect(validation.valid).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://dev.app.tribexai.com/admin/persona-studio/test-suites/validate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ organizationId: "org_consultant", definition }),
+      }),
+    );
+
+    fetchMock.mockClear();
+    const launchReview = parseToolText(
+      await handleToolCall("run-test-suite", {
+        organizationId: "org_consultant",
+        suiteId: "suite_1",
+      }),
+    );
+    expect(launchReview).toMatchObject({
+      launched: false,
+      deprecated: true,
+      requiresStudioReview: true,
+      renderer: "persona_lab",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("launches through the deprecated MCP bridge only with the exact Studio token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ suiteRun: { id: "run_1" } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await handleToolCall("run-test-suite", {
+      organizationId: "org_consultant",
+      suiteId: "suite_1",
+      suiteVersionId: "version_2",
+      confirmationToken: "signed-token",
+      repetitions: 3,
+      selectedAxes: { model: ["fast", "deep"] },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://dev.app.tribexai.com/admin/persona-studio/test-suites/suite_1/runs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          organizationId: "org_consultant",
+          suiteVersionId: "version_2",
+          confirmationToken: "signed-token",
+          selectedAxes: { model: ["fast", "deep"] },
+          repetitions: 3,
         }),
       }),
     );

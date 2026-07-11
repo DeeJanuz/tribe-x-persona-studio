@@ -4,11 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:islands": "node scripts/build-persona-test-builder.mjs",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "node --check renderers/persona-lab.js && node --check renderers/persona-management.js && node --check tools/relay-probe-server.mjs && node --check tools/relay-probe-executors.mjs"
+    "check": "npm run build:islands && node --check renderers/persona-lab.js && node --check renderers/persona-management.js && node --check renderers/persona-test-builder.js && node --check tools/relay-probe-server.mjs && node --check tools/relay-probe-executors.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.8.5",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "esbuild": "^0.27.0",
     "happy-dom": "^17.6.3",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   }
 }

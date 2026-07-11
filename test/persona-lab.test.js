@@ -13,6 +13,7 @@ function personaDetail() {
     document: {
       definition: {
         key: 'general',
+        definitionId: 'persona_def_general',
         displayName: 'General',
         description: 'General consultant persona.',
         owner: 'consultant',
@@ -169,6 +170,53 @@ function suiteRunPayload() {
         },
       ],
     },
+  };
+}
+
+function appBridgeCatalogPayload() {
+  return {
+    integrations: [
+      {
+        id: 'bridge_ludflow',
+        providerKey: 'ludflow',
+        providerOrganizationId: 'ludflow_org_1',
+        organizationName: 'Ludflow Workspace',
+        organizationSlug: 'ludflow-workspace',
+        displayName: 'Ludflow',
+        status: 'ACTIVE',
+        catalogSync: { status: 'SYNCED' },
+        capabilities: [
+          {
+            id: 'cap_search',
+            capabilityKey: 'ludflow.documents.search',
+            domain: 'documents',
+            displayName: 'Search documents',
+            description: 'Search Ludflow documents.',
+            kind: 'READ',
+            approvalMode: 'AUTO',
+            status: 'ACTIVE',
+            version: '1.0.0',
+            deprecatedAt: null,
+            revokedAt: null,
+            grantedPersonaDefinitionIds: ['persona_def_other'],
+          },
+          {
+            id: 'cap_read',
+            capabilityKey: 'ludflow.documents.read',
+            domain: 'documents',
+            displayName: 'Read document',
+            description: 'Read a Ludflow document.',
+            kind: 'READ',
+            approvalMode: 'AUTO',
+            status: 'ACTIVE',
+            version: '1.0.0',
+            deprecatedAt: null,
+            revokedAt: null,
+            grantedPersonaDefinitionIds: ['persona_def_general'],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -346,6 +394,12 @@ function installRenderer(options = {}) {
         if (method === 'GET' && path === '/organizations/org_consultant/persona-studio/assets') {
           return { assets: [] };
         }
+        if (method === 'GET' && path === '/organizations/org_consultant/persona-studio/app-bridge') {
+          return options.appBridgeCatalog || { integrations: [] };
+        }
+        if (method === 'PUT' && path === '/organizations/org_consultant/persona-studio/app-bridge/grants') {
+          return { granted: args.body?.granted };
+        }
         if (method === 'GET' && path === '/admin/persona-studio/personas/general') {
           return personaDetail();
         }
@@ -430,7 +484,8 @@ describe('Persona Studio renderer test suites', () => {
     await flush();
     await flush();
 
-    expect(document.body.textContent).toContain('Synthetic scenarios only');
+    expect(document.body.textContent).toContain('Advisory evaluation');
+    expect(document.body.textContent).toContain('Contract and Live Probe results stay separate');
     expect(document.body.textContent).toContain('Customer-safe acceptance');
     expect(document.body.textContent).toContain('Target skill');
     expect(document.body.textContent).toContain('Require tool call');
@@ -448,6 +503,50 @@ describe('Persona Studio renderer test suites', () => {
     )).toBe(false);
     expect(document.body.textContent).not.toContain('DecidR-backed requirements');
     expect(document.body.textContent).not.toContain('persona-requirement-submit');
+  });
+
+  it('renders App Integration tools and grants Ludflow capabilities', async () => {
+    const calls = installRenderer({ appBridgeCatalog: appBridgeCatalogPayload() });
+    window.__renderers.persona_lab(document.getElementById('root'));
+    await flush();
+    await flush();
+
+    [...document.querySelectorAll('button')]
+      .find((button) => button.textContent.includes('Runtime'))
+      .click();
+    await flush();
+
+    expect(document.body.textContent).toContain('App Integrations');
+    expect(document.body.textContent).toContain('Ludflow');
+    expect(document.body.textContent).toContain('Search documents');
+    expect(document.body.textContent).toContain('app_bridge__ludflow_documents_search');
+
+    const search = [...document.querySelectorAll('input[type="search"]')]
+      .find((input) => input.placeholder.includes('app integrations'));
+    search.value = 'app_bridge__ludflow_documents_search';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+
+    expect(document.body.textContent).toContain('Search documents');
+    const rows = [...document.querySelectorAll('.persona-lab-app-tool-row')];
+    expect(rows.filter((row) => !row.classList.contains('hidden'))).toHaveLength(1);
+
+    const checkbox = rows
+      .find((row) => row.textContent.includes('Search documents'))
+      .querySelector('input[type="checkbox"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    await flush();
+
+    expect(calls.some((call) =>
+      call.args?.method === 'PUT' &&
+      call.args?.path === '/organizations/org_consultant/persona-studio/app-bridge/grants' &&
+      call.args?.body?.integrationId === 'bridge_ludflow' &&
+      call.args?.body?.capabilityId === 'cap_search' &&
+      call.args?.body?.personaDefinitionId === 'persona_def_general' &&
+      call.args?.body?.granted === true
+    )).toBe(true);
   });
 
   it('saves skill-targeted tool contract checks', async () => {

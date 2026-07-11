@@ -29,6 +29,7 @@ print('  Updated source manifest download_url')
 
 cp manifest.json "${BUILD_DIR}/manifest.json"
 cp renderers/*.js "${BUILD_DIR}/renderers/"
+cp renderers/*.css "${BUILD_DIR}/renderers/"
 cp tools/relay-probe-server.mjs "${BUILD_DIR}/tools/relay-probe-server.mjs"
 cp tools/relay-probe-executors.mjs "${BUILD_DIR}/tools/relay-probe-executors.mjs"
 

@@ -5,7 +5,11 @@
   window.__renderers = window.__renderers || {};
 
   var GLOBAL_KEY = '__personaLabPluginState';
-  var RENDERER_VERSION = '2026-05-23-test-suites-v1';
+  var RENDERER_VERSION = '2026-07-10-test-suites-v2';
+  var RENDERER_SCRIPT_URL = document.currentScript && document.currentScript.src
+    ? document.currentScript.src
+    : '';
+  var PERSONA_TEST_BUILDER_PROMISE = null;
   var SESSION_LABEL = 'Persona Studio';
   var DEV_CONTROL_PLANE_URL = 'https://dev.app.tribexai.com';
   var LOCAL_CONTROL_PLANE_URL = 'http://127.0.0.1:3000';
@@ -214,6 +218,11 @@
         personas: [],
         registries: null,
         assetRegistry: null,
+        appBridgeCatalog: null,
+        appBridgeCatalogLoaded: false,
+        appBridgeCatalogLoading: false,
+        appBridgeCatalogError: '',
+        appBridgeGrantPendingKey: '',
         localMcpCatalog: null,
         localMcpCatalogLoaded: false,
         localMcpCatalogLoading: false,
@@ -273,6 +282,7 @@
         testSuitesError: '',
         testSuiteLimits: null,
         selectedTestSuiteId: '',
+        testSuiteEditorOpen: false,
         suiteDraft: defaultSuiteDraft(),
         suiteSaving: false,
         suiteCaseDraft: defaultSuiteCaseDraft(),
@@ -390,6 +400,11 @@
     state.navGroupExpansion = {};
     state.registries = null;
     state.assetRegistry = null;
+    state.appBridgeCatalog = null;
+    state.appBridgeCatalogLoaded = false;
+    state.appBridgeCatalogLoading = false;
+    state.appBridgeCatalogError = '';
+    state.appBridgeGrantPendingKey = '';
     state.customToolDraft = defaultCustomToolDraft();
     state.customToolRegistering = false;
     state.customToolError = '';
@@ -845,6 +860,26 @@
       '.persona-lab-tool-copy strong{font-size:13px;line-height:1.35}',
       '.persona-lab-tool-copy code{font-size:11px;color:var(--text-tertiary);word-break:break-all}',
       '.persona-lab-tool-row.hidden,.persona-lab-tool-group.hidden{display:none}',
+      '.persona-lab-app-integrations{display:flex;flex-direction:column;gap:12px}',
+      '.persona-lab-app-integration-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}',
+      '.persona-lab-app-integration-toolbar .persona-lab-input{max-width:420px}',
+      '.persona-lab-app-integration-actions,.persona-lab-app-integration-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+      '.persona-lab-app-integration-group{border:1px solid var(--glass-border);border-radius:18px;background:var(--bg-surface-subtle);overflow:hidden}',
+      '.persona-lab-app-integration-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:flex-start;gap:10px;padding:12px 14px;background:var(--bg-surface-subtle)}',
+      '.persona-lab-app-integration-group[open]>.persona-lab-app-integration-summary{border-bottom:1px solid var(--glass-border)}',
+      '.persona-lab-app-integration-summary strong{display:block;font-size:14px;line-height:1.3}',
+      '.persona-lab-app-integration-summary code{display:block;margin-top:4px;font-size:11px;color:var(--text-tertiary);word-break:break-all}',
+      '.persona-lab-app-integration-counts{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}',
+      '.persona-lab-app-tool-domain{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-top:1px solid var(--border-subtle)}',
+      '.persona-lab-app-tool-domain:first-of-type{border-top:none}',
+      '.persona-lab-app-tool-domain h4{margin:0;color:var(--text-secondary);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}',
+      '.persona-lab-app-tool-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:10px;border:1px solid var(--border-subtle);border-radius:14px;background:var(--bg-app)}',
+      '.persona-lab-app-tool-row input{margin-top:4px}',
+      '.persona-lab-app-tool-row.hidden,.persona-lab-app-integration-group.hidden{display:none}',
+      '.persona-lab-app-tool-copy{display:flex;flex-direction:column;gap:5px;min-width:0}',
+      '.persona-lab-app-tool-copy strong{font-size:13px;line-height:1.35}',
+      '.persona-lab-app-tool-copy code{font-size:11px;color:var(--text-tertiary);word-break:break-all}',
+      '.persona-lab-app-tool-copy em{color:var(--text-tertiary);font-size:11px;font-style:normal;word-break:break-word}',
       '.persona-lab-variable-list{display:flex;flex-direction:column;gap:10px}',
       '.persona-lab-variable-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(140px,1fr) minmax(120px,.8fr) minmax(120px,1fr) auto auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--glass-border);border-radius:14px;background:var(--bg-surface-subtle)}',
       '.persona-lab-variable-row .persona-lab-field{gap:5px}',
@@ -979,6 +1014,8 @@
       '.persona-lab-button.danger{background:transparent;border-color:var(--glass-border);color:var(--color-error-text)}',
       '.persona-lab-button.danger:hover:not(:disabled){border-color:var(--color-error);background:var(--color-error-bg)}',
       '.persona-lab-panel{border-radius:var(--border-radius-lg);padding:var(--space-4);gap:var(--space-3);animation:persona-lab-stagger-fade-in .3s ease both}',
+      '.persona-lab-test-suites.immersive{padding:0;gap:0;background:transparent;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible}',
+      '.persona-test-builder-host.immersive{width:100%;min-width:0}',
       '.persona-lab-panel.compact{gap:var(--space-3)}',
       '.persona-lab-panel h2{font-size:var(--text-h2);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold)}',
       '.persona-lab-panel h3{font-size:var(--text-h3);line-height:var(--leading-tight);letter-spacing:0;font-weight:var(--weight-semibold)}',
@@ -991,9 +1028,9 @@
       '.persona-lab-model-empty,.persona-lab-model-option,.persona-lab-model-provider,.persona-lab-model-provider-toggle{border-radius:var(--border-radius-md)}',
       '.persona-lab-model-empty:hover,.persona-lab-model-option:hover,.persona-lab-model-option.active{border-color:var(--accent-primary);background:var(--bg-surface-hover)}',
       '.persona-lab-model-empty.active,.persona-lab-model-option.active,.persona-lab-step.active{background:var(--accent-primary-ghost)}',
-      '.persona-lab-rule-item,.persona-lab-default-rule-library,.persona-lab-default-rule-card,.persona-lab-tool-group,.persona-lab-variable-row,.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-empty,.persona-lab-run-card,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card,.persona-lab-summary-banner{border-radius:var(--border-radius-md)}',
+      '.persona-lab-rule-item,.persona-lab-default-rule-library,.persona-lab-default-rule-card,.persona-lab-tool-group,.persona-lab-app-integration-group,.persona-lab-app-tool-row,.persona-lab-variable-row,.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-empty,.persona-lab-run-card,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card,.persona-lab-summary-banner{border-radius:var(--border-radius-md)}',
       '.persona-lab-choice,.persona-lab-skill,.persona-lab-kv-item,.persona-lab-run-metric,.persona-lab-metric-card,.persona-lab-review-item,.persona-lab-comparison-item,.persona-lab-turn-card{background:var(--bg-surface-subtle)}',
-      '.persona-lab-choice:hover,.persona-lab-tool-row:hover,.persona-lab-rule-item:hover,.persona-lab-rule-item.active{background:var(--bg-surface-hover);border-color:var(--accent-primary)}',
+      '.persona-lab-choice:hover,.persona-lab-tool-row:hover,.persona-lab-app-tool-row:hover,.persona-lab-rule-item:hover,.persona-lab-rule-item.active{background:var(--bg-surface-hover);border-color:var(--accent-primary)}',
       '.persona-lab-details-body{padding:var(--space-4);border-top-color:var(--glass-border)}',
       '.persona-lab-skill>.persona-lab-details-summary,.persona-lab-run-card>.persona-lab-details-summary{padding:var(--space-3)}',
       '.persona-lab-run-card{padding:var(--space-4);gap:var(--space-3);background:var(--glass-bg)}',
@@ -1064,6 +1101,81 @@
       body: body || null,
       query: query || null,
     });
+  }
+
+  function personaTestBuilderAssetUrl(fileName) {
+    if (!RENDERER_SCRIPT_URL) return '';
+    return RENDERER_SCRIPT_URL.replace(/persona-lab\.js(?:\?.*)?$/, fileName);
+  }
+
+  function ensurePersonaTestBuilderLoaded() {
+    if (window.TribeXPersonaTestBuilder) {
+      return Promise.resolve(window.TribeXPersonaTestBuilder);
+    }
+    if (PERSONA_TEST_BUILDER_PROMISE) return PERSONA_TEST_BUILDER_PROMISE;
+    var scriptUrl = personaTestBuilderAssetUrl('persona-test-builder.js');
+    if (!scriptUrl) {
+      return Promise.reject(new Error('Persona Test Builder asset URL is unavailable.'));
+    }
+    PERSONA_TEST_BUILDER_PROMISE = new Promise(function (resolve, reject) {
+      var cssUrl = personaTestBuilderAssetUrl('persona-test-builder.css');
+      if (cssUrl && !document.querySelector('link[data-persona-test-builder]')) {
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = cssUrl;
+        link.dataset.personaTestBuilder = 'true';
+        document.head.appendChild(link);
+      }
+      var script = document.createElement('script');
+      script.src = scriptUrl;
+      script.async = true;
+      script.dataset.personaTestBuilder = 'true';
+      script.onload = function () {
+        if (window.TribeXPersonaTestBuilder) resolve(window.TribeXPersonaTestBuilder);
+        else reject(new Error('Persona Test Builder did not register.'));
+      };
+      script.onerror = function () {
+        reject(new Error('Persona Test Builder failed to load.'));
+      };
+      document.head.appendChild(script);
+    });
+    return PERSONA_TEST_BUILDER_PROMISE;
+  }
+
+  function mountPersonaTestBuilder(state, host, suite) {
+    host.appendChild(createEl('div', 'persona-lab-empty', 'Loading the V2 graph editor...'));
+    ensurePersonaTestBuilderLoaded()
+      .then(function (builder) {
+        if (!host.isConnected || !suite || !suite.id) return;
+        host.innerHTML = '';
+        state.personaTestBuilderUnmount = builder.mount(host, {
+          suiteId: suite.id,
+          organizationId: selectedConsultantOrganizationId(state),
+          personaKey: state.selectedPersonaKey,
+          sourceStage: suite.sourceStage || 'draft',
+          latestRun: suite.latestRun || null,
+          request: request,
+          onStatus: function (message, kind) {
+            if (kind === 'error') setError(state, message);
+            else setStatus(state, message);
+          },
+          onExit: function () {
+            state.testSuiteEditorOpen = false;
+            renderState(state);
+          },
+        });
+      })
+      .catch(function (error) {
+        if (!host.isConnected) return;
+        host.innerHTML = '';
+        host.appendChild(
+          createEl(
+            'div',
+            'persona-lab-error',
+            stringifyError(error) + ' The legacy flat-case editor remains available below.'
+          )
+        );
+      });
   }
 
   function replaceSessionChrome(state, title) {
@@ -1168,6 +1280,7 @@
     state.testSuitesError = '';
     state.testSuiteLimits = null;
     state.selectedTestSuiteId = '';
+    state.testSuiteEditorOpen = false;
     state.suiteDraft = defaultSuiteDraft();
     state.suiteSaving = false;
     state.suiteCaseDraft = defaultSuiteCaseDraft();
@@ -2869,6 +2982,213 @@
     return merged;
   }
 
+  function appBridgeRuntimeToolName(capabilityKey) {
+    var safeName = String(capabilityKey || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    return 'app_bridge__' + (safeName || 'tool');
+  }
+
+  function appBridgeCatalogSyncStatus(integration) {
+    var sync = ensureObject(integration && integration.catalogSync);
+    return String(sync.status || sync.state || 'Not synced');
+  }
+
+  function appBridgeCapabilityIsActive(capability) {
+    return capability &&
+      String(capability.status || '') === 'ACTIVE' &&
+      !capability.deprecatedAt &&
+      !capability.revokedAt;
+  }
+
+  function currentPersonaDefinitionId(state) {
+    var definition = currentPersonaDefinition(state);
+    return String(
+      definition.definitionId ||
+      definition.personaDefinitionId ||
+      definition.id ||
+      ''
+    );
+  }
+
+  function appBridgeCapabilityGranted(capability, personaDefinitionId) {
+    return Boolean(
+      personaDefinitionId &&
+      ensureArray(capability && capability.grantedPersonaDefinitionIds)
+        .map(function (id) { return String(id); })
+        .indexOf(String(personaDefinitionId)) >= 0
+    );
+  }
+
+  function appBridgeIntegrationSearchText(integration) {
+    return [
+      integration.displayName,
+      integration.providerKey,
+      integration.providerOrganizationId,
+      integration.organizationName,
+      integration.organizationSlug,
+      integration.status,
+      appBridgeCatalogSyncStatus(integration),
+    ].join(' ').toLowerCase();
+  }
+
+  function appBridgeCapabilitySearchText(integration, capability) {
+    return [
+      appBridgeIntegrationSearchText(integration),
+      capability.displayName,
+      capability.capabilityKey,
+      appBridgeRuntimeToolName(capability.capabilityKey),
+      capability.description,
+      capability.domain,
+      capability.kind,
+      capability.approvalMode,
+      capability.status,
+      capability.version,
+    ].join(' ').toLowerCase();
+  }
+
+  function appBridgeDomainGroups(capabilities) {
+    var groups = new Map();
+    ensureArray(capabilities).forEach(function (capability) {
+      var domain = String(capability.domain || 'tools');
+      if (!groups.has(domain)) groups.set(domain, []);
+      groups.get(domain).push(capability);
+    });
+    return Array.from(groups.keys())
+      .sort(function (left, right) { return left.localeCompare(right); })
+      .map(function (domain) {
+        return { domain: domain, capabilities: groups.get(domain) || [] };
+      });
+  }
+
+  function appBridgeVisibleGroups(state, query, selectedOnly) {
+    var personaDefinitionId = currentPersonaDefinitionId(state);
+    var normalizedQuery = String(query || '').trim().toLowerCase();
+    return ensureArray(state.appBridgeCatalog && state.appBridgeCatalog.integrations)
+      .map(function (integration) {
+        var integrationText = appBridgeIntegrationSearchText(integration);
+        var integrationMatches = !normalizedQuery || integrationText.indexOf(normalizedQuery) >= 0;
+        var capabilities = ensureArray(integration.capabilities).filter(function (capability) {
+          if (selectedOnly && !appBridgeCapabilityGranted(capability, personaDefinitionId)) {
+            return false;
+          }
+          return integrationMatches ||
+            appBridgeCapabilitySearchText(integration, capability).indexOf(normalizedQuery) >= 0;
+        });
+        if (!capabilities.length) return null;
+        return {
+          integration: integration,
+          capabilities: capabilities,
+          domains: appBridgeDomainGroups(capabilities),
+          selectedCount: ensureArray(integration.capabilities).filter(function (capability) {
+            return appBridgeCapabilityGranted(capability, personaDefinitionId);
+          }).length,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function replaceAppBridgeCapabilityGrant(state, input) {
+    if (!state.appBridgeCatalog) return;
+    state.appBridgeCatalog = {
+      integrations: ensureArray(state.appBridgeCatalog.integrations).map(function (integration) {
+        if (String(integration.id) !== String(input.integrationId)) return integration;
+        return Object.assign({}, integration, {
+          capabilities: ensureArray(integration.capabilities).map(function (capability) {
+            if (String(capability.id) !== String(input.capabilityId)) return capability;
+            var grants = ensureArray(capability.grantedPersonaDefinitionIds)
+              .map(function (id) { return String(id); });
+            var personaDefinitionId = String(input.personaDefinitionId);
+            return Object.assign({}, capability, {
+              grantedPersonaDefinitionIds: input.granted
+                ? Array.from(new Set(grants.concat([personaDefinitionId])))
+                : grants.filter(function (id) { return id !== personaDefinitionId; }),
+            });
+          }),
+        });
+      }),
+    };
+  }
+
+  function refreshAppBridgeCatalog(state) {
+    if (!hasConsultantOrganizationContext(state)) {
+      state.appBridgeCatalog = { integrations: [] };
+      state.appBridgeCatalogLoaded = true;
+      state.appBridgeCatalogLoading = false;
+      state.appBridgeCatalogError = '';
+      return Promise.resolve(state.appBridgeCatalog);
+    }
+    state.appBridgeCatalogLoading = true;
+    state.appBridgeCatalogError = '';
+    return request(
+      'GET',
+      '/organizations/' + encodeURIComponent(state.organizationId) + '/persona-studio/app-bridge',
+      null,
+      null
+    )
+      .then(function (catalog) {
+        state.appBridgeCatalog = catalog || { integrations: [] };
+        state.appBridgeCatalogLoaded = true;
+        state.appBridgeCatalogError = '';
+        return state.appBridgeCatalog;
+      })
+      .catch(function (error) {
+        state.appBridgeCatalog = { integrations: [] };
+        state.appBridgeCatalogError = stringifyError(error);
+        return state.appBridgeCatalog;
+      })
+      .finally(function () {
+        state.appBridgeCatalogLoading = false;
+      });
+  }
+
+  function setAppBridgeCapabilityGrant(state, integrationId, capability, granted) {
+    var personaDefinitionId = currentPersonaDefinitionId(state);
+    if (!state.organizationId || !personaDefinitionId || !integrationId || !capability || !capability.id) {
+      state.appBridgeCatalogError = 'Save this persona before granting App Bridge tools.';
+      renderState(state);
+      return Promise.resolve(false);
+    }
+    var actionKey = integrationId + ':' + capability.id;
+    state.appBridgeGrantPendingKey = actionKey;
+    state.appBridgeCatalogError = '';
+    replaceAppBridgeCapabilityGrant(state, {
+      integrationId: integrationId,
+      capabilityId: capability.id,
+      personaDefinitionId: personaDefinitionId,
+      granted: granted,
+    });
+    renderState(state);
+    return request(
+      'PUT',
+      '/organizations/' + encodeURIComponent(state.organizationId) + '/persona-studio/app-bridge/grants',
+      {
+        integrationId: integrationId,
+        capabilityId: capability.id,
+        personaDefinitionId: personaDefinitionId,
+        granted: granted,
+      }
+    )
+      .then(function () {
+        return true;
+      })
+      .catch(function (error) {
+        replaceAppBridgeCapabilityGrant(state, {
+          integrationId: integrationId,
+          capabilityId: capability.id,
+          personaDefinitionId: personaDefinitionId,
+          granted: !granted,
+        });
+        state.appBridgeCatalogError = stringifyError(error);
+        return false;
+      })
+      .finally(function () {
+        state.appBridgeGrantPendingKey = '';
+        renderState(state);
+      });
+  }
+
   function runtimeToolOptionsForState(state, registries) {
     var toolRegistry = ensureObject(registries && registries.toolRegistry);
     var assetRegistry = assetRegistryForState(state, registries);
@@ -2876,7 +3196,8 @@
       ? state.form.draft.toolPolicy.allowedRuntimeToolIds
       : [];
     return mergeRuntimeToolOptions(
-      collectStaticRuntimeToolOptions(toolRegistry)
+      ensureArray(toolRegistry.runtimeToolOptions)
+        .concat(collectStaticRuntimeToolOptions(toolRegistry))
         .concat(registeredRuntimeToolOptionsFromAssetRegistry(assetRegistry))
         .concat(collectLocalRuntimeToolOptions(state.localMcpCatalog)),
       selected
@@ -3014,6 +3335,11 @@
       state.personaFolders = [];
       state.registries = null;
       state.assetRegistry = null;
+      state.appBridgeCatalog = { integrations: [] };
+      state.appBridgeCatalogLoaded = true;
+      state.appBridgeCatalogLoading = false;
+      state.appBridgeCatalogError = '';
+      state.appBridgeGrantPendingKey = '';
       state.current = null;
       state.form = null;
       state.dirty = false;
@@ -3033,10 +3359,14 @@
     )
       .then(function (payload) {
         applyBootstrapPayload(state, payload);
-        return refreshAssetRegistry(state)
-          .catch(function () {
+        return Promise.all([
+          refreshAssetRegistry(state).catch(function () {
             return null;
-          })
+          }),
+          refreshAppBridgeCatalog(state).catch(function () {
+            return null;
+          }),
+        ])
           .then(function () {
             state.personas = mergePersonaAssetsIntoCatalog(state.personas, state.assetRegistry);
             if (state.selectedPersonaKey) {
@@ -5776,6 +6106,187 @@
     return formatNumber(count) + ' ' + (count === 1 ? singular : plural);
   }
 
+  function buildAppBridgeCatalogSection(state) {
+    var personaDefinitionId = currentPersonaDefinitionId(state);
+    var root = createEl('div', 'persona-lab-app-integrations');
+    var toolbar = createEl('div', 'persona-lab-app-integration-toolbar');
+    var search = createEl('input', 'persona-lab-input');
+    search.type = 'search';
+    search.placeholder = 'Search app integrations, tools, domains, or runtime names';
+    search.setAttribute('aria-label', 'Search app integration tools');
+    toolbar.appendChild(search);
+
+    var actions = createEl('div', 'persona-lab-app-integration-actions');
+    var selectedToggle = createEl('label', 'persona-lab-toggle');
+    var selectedOnly = document.createElement('input');
+    selectedOnly.type = 'checkbox';
+    selectedToggle.appendChild(selectedOnly);
+    selectedToggle.appendChild(document.createTextNode('Selected only'));
+    actions.appendChild(selectedToggle);
+
+    var expandAll = createEl('button', 'persona-lab-button small', 'Expand all');
+    expandAll.type = 'button';
+    expandAll.addEventListener('click', function () {
+      Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-app-integration-group:not(.hidden)'), function (group) {
+        group.open = true;
+      });
+    });
+    actions.appendChild(expandAll);
+
+    var collapseAll = createEl('button', 'persona-lab-button small', 'Collapse all');
+    collapseAll.type = 'button';
+    collapseAll.addEventListener('click', function () {
+      Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-app-integration-group'), function (group) {
+        group.open = false;
+      });
+    });
+    actions.appendChild(collapseAll);
+    toolbar.appendChild(actions);
+    root.appendChild(toolbar);
+
+    if (state.appBridgeCatalogLoading) {
+      root.appendChild(createEl('div', 'persona-lab-helper', 'Loading app integration tools...'));
+      return root;
+    }
+
+    if (state.appBridgeCatalogError) {
+      root.appendChild(createEl('div', 'persona-lab-helper warning', state.appBridgeCatalogError));
+    }
+
+    var integrations = ensureArray(state.appBridgeCatalog && state.appBridgeCatalog.integrations);
+    var totalCapabilities = integrations.reduce(function (count, integration) {
+      return count + ensureArray(integration.capabilities).length;
+    }, 0);
+    var totalSelected = integrations.reduce(function (count, integration) {
+      return count + ensureArray(integration.capabilities).filter(function (capability) {
+        return appBridgeCapabilityGranted(capability, personaDefinitionId);
+      }).length;
+    }, 0);
+    var meta = createEl('div', 'persona-lab-app-integration-meta');
+    meta.appendChild(createEl('span', 'persona-lab-badge', groupedChoiceCountLabel(integrations.length, 'integration', 'integrations')));
+    meta.appendChild(createEl('span', 'persona-lab-badge', groupedChoiceCountLabel(totalCapabilities, 'tool', 'tools')));
+    meta.appendChild(createEl('span', 'persona-lab-badge', formatNumber(totalSelected) + ' selected'));
+    root.appendChild(meta);
+
+    var groups = appBridgeVisibleGroups(state, '', false);
+    groups.forEach(function (group) {
+      var integration = group.integration;
+      var activeCount = ensureArray(integration.capabilities).filter(appBridgeCapabilityIsActive).length;
+      var groupEl = createEl('details', 'persona-lab-app-integration-group persona-lab-details');
+      groupEl.open = Boolean(group.selectedCount || groups.length === 1);
+      groupEl.setAttribute('data-search', appBridgeIntegrationSearchText(integration));
+
+      var summary = createEl('summary', 'persona-lab-app-integration-summary persona-lab-details-summary');
+      summary.appendChild(createEl('span', 'persona-lab-details-caret', '›'));
+      var headerCopy = createEl('div');
+      headerCopy.appendChild(createEl('strong', null, integration.displayName || integration.providerKey || 'App integration'));
+      headerCopy.appendChild(
+        createEl(
+          'code',
+          null,
+          [
+            integration.providerKey,
+            integration.providerOrganizationId,
+            integration.organizationName,
+          ].filter(Boolean).join(' · ')
+        )
+      );
+      summary.appendChild(headerCopy);
+      var counts = createEl('div', 'persona-lab-app-integration-counts');
+      counts.appendChild(createEl('span', 'persona-lab-badge', formatNumber(group.selectedCount) + '/' + formatNumber(ensureArray(integration.capabilities).length) + ' selected'));
+      counts.appendChild(createEl('span', 'persona-lab-badge', groupedChoiceCountLabel(activeCount, 'active tool', 'active tools')));
+      counts.appendChild(createEl('span', 'persona-lab-badge', appBridgeCatalogSyncStatus(integration)));
+      summary.appendChild(counts);
+      groupEl.appendChild(summary);
+
+      group.domains.forEach(function (domainGroup) {
+        var domainEl = createEl('div', 'persona-lab-app-tool-domain');
+        domainEl.appendChild(createEl('h4', null, domainGroup.domain));
+        ensureArray(domainGroup.capabilities)
+          .slice()
+          .sort(function (left, right) {
+            return String(left.displayName || left.capabilityKey).localeCompare(String(right.displayName || right.capabilityKey));
+          })
+          .forEach(function (capability) {
+            var runtimeName = appBridgeRuntimeToolName(capability.capabilityKey);
+            var selected = appBridgeCapabilityGranted(capability, personaDefinitionId);
+            var inactive = !appBridgeCapabilityIsActive(capability);
+            var actionKey = String(integration.id) + ':' + String(capability.id);
+            var row = createEl('label', 'persona-lab-app-tool-row');
+            row.setAttribute(
+              'data-search',
+              appBridgeCapabilitySearchText(integration, capability)
+            );
+            row.setAttribute('data-selected', selected ? 'true' : 'false');
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = selected;
+            input.disabled = inactive || !personaDefinitionId || state.appBridgeGrantPendingKey === actionKey;
+            input.addEventListener('change', function () {
+              setAppBridgeCapabilityGrant(state, integration.id, capability, input.checked);
+            });
+            row.appendChild(input);
+            var copy = createEl('div', 'persona-lab-app-tool-copy');
+            copy.appendChild(createEl('strong', null, capability.displayName || capability.capabilityKey));
+            copy.appendChild(createEl('code', null, capability.capabilityKey || ''));
+            copy.appendChild(createEl('code', null, runtimeName));
+            if (capability.description) {
+              copy.appendChild(createEl('p', 'persona-lab-helper', capability.description));
+            }
+            copy.appendChild(
+              createEl(
+                'em',
+                null,
+                [
+                  capability.kind,
+                  capability.approvalMode,
+                  capability.status,
+                  inactive ? 'inactive' : '',
+                  integration.displayName,
+                ].filter(Boolean).join(' · ')
+              )
+            );
+            row.appendChild(copy);
+            domainEl.appendChild(row);
+          });
+        groupEl.appendChild(domainEl);
+      });
+
+      root.appendChild(groupEl);
+    });
+
+    if (!integrations.length) {
+      root.appendChild(createEl('div', 'persona-lab-empty', 'No app integration tools are registered for this consultant organization.'));
+    } else if (!groups.length) {
+      root.appendChild(createEl('div', 'persona-lab-empty', 'No app integration tools match the current filters.'));
+    }
+
+    search.addEventListener('input', function () {
+      filterAppBridgeToolRows(root, search.value, selectedOnly.checked);
+    });
+    selectedOnly.addEventListener('change', function () {
+      filterAppBridgeToolRows(root, search.value, selectedOnly.checked);
+    });
+    return root;
+  }
+
+  function filterAppBridgeToolRows(root, query, selectedOnly) {
+    var normalized = String(query || '').trim().toLowerCase();
+    Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-app-tool-row'), function (row) {
+      var haystack = String(row.getAttribute('data-search') || '').toLowerCase();
+      var matchesQuery = !normalized || haystack.indexOf(normalized) >= 0;
+      var matchesSelection = !selectedOnly || row.getAttribute('data-selected') === 'true';
+      row.classList.toggle('hidden', !(matchesQuery && matchesSelection));
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.persona-lab-app-integration-group'), function (group) {
+      var visibleRows = group.querySelectorAll('.persona-lab-app-tool-row:not(.hidden)').length;
+      group.classList.toggle('hidden', visibleRows === 0);
+      if ((normalized || selectedOnly) && visibleRows > 0) {
+        group.open = true;
+      }
+    });
+  }
+
   function sortGroupedChoiceLabels(left, right) {
     if (left === 'Unregistered' && right !== 'Unregistered') return 1;
     if (right === 'Unregistered' && left !== 'Unregistered') return -1;
@@ -7664,13 +8175,7 @@
   }
 
   function renderTestSuitesPanel(state) {
-    var panel = createEl('section', 'persona-lab-panel persona-lab-test-suites');
-    appendSectionHeading(
-      panel,
-      'h2',
-      'Test Suites',
-      'Synthetic acceptance scenarios, deterministic checks, manual review, and customer-safe evidence reports.'
-    );
+    var panel = createEl('section', 'persona-lab-panel persona-lab-test-suites' + (state.testSuiteEditorOpen ? ' immersive' : ''));
     if (state.personaWizardStep === 'test-suites' &&
       state.selectedPersonaKey &&
       !state.testSuitesLoading &&
@@ -7679,13 +8184,27 @@
         fetchTestSuites(state).catch(function () {});
       }, 0);
     }
+    var immersiveSuite = selectedTestSuite(state);
+    if (state.testSuiteEditorOpen && immersiveSuite) {
+      var immersiveHost = createEl('div', 'persona-test-builder-host immersive');
+      immersiveHost.setAttribute('aria-label', 'Persona Test Suite V2 graph editor');
+      panel.appendChild(immersiveHost);
+      mountPersonaTestBuilder(state, immersiveHost, immersiveSuite);
+      return panel;
+    }
+    appendSectionHeading(
+      panel,
+      'h2',
+      'Test Suites',
+      'Versioned scenario graphs, Contract fixtures, separate Live Probes, experiment matrices, and customer-safe aggregate evidence.'
+    );
     if (state.testSuitesError) {
       panel.appendChild(createEl('div', 'persona-lab-error', state.testSuitesError));
     }
     var toolbar = createEl('div', 'persona-lab-toolbar');
     var toolbarCopy = createEl('div');
-    toolbarCopy.appendChild(createEl('strong', null, 'Synthetic scenarios only'));
-    toolbarCopy.appendChild(createEl('div', 'persona-lab-helper', 'Suites warn on failures but do not block persona distribution.'));
+    toolbarCopy.appendChild(createEl('strong', null, 'Advisory evaluation'));
+    toolbarCopy.appendChild(createEl('div', 'persona-lab-helper', 'Contract and Live Probe results stay separate and never block persona distribution.'));
     toolbar.appendChild(toolbarCopy);
     var refresh = createEl('button', 'persona-lab-button', state.testSuitesLoading ? 'Refreshing...' : 'Refresh');
     refresh.type = 'button';
@@ -7740,6 +8259,7 @@
       button.appendChild(createEl('span', null, formatNumber(ensureArray(suite.cases).length) + ' cases · v' + suite.version));
       button.addEventListener('click', function () {
         state.selectedTestSuiteId = suite.id;
+        state.testSuiteEditorOpen = true;
         renderState(state);
       });
       selector.appendChild(button);
@@ -7748,6 +8268,23 @@
 
     var suite = selectedTestSuite(state);
     if (!suite) return panel;
+    var openEditor = createEl('button', 'persona-lab-button primary', 'Open visual editor');
+    openEditor.type = 'button';
+    openEditor.addEventListener('click', function () {
+      state.testSuiteEditorOpen = true;
+      renderState(state);
+    });
+    panel.appendChild(openEditor);
+    var legacyHeading = createEl('h3', null, 'Legacy flat cases');
+    legacyHeading.className = 'persona-lab-section-divider';
+    panel.appendChild(legacyHeading);
+    panel.appendChild(
+      createEl(
+        'div',
+        'persona-lab-helper',
+        'Existing cases remain runnable through their migrated Start → Persona Exchange → Assertions → End graph.'
+      )
+    );
     panel.appendChild(renderTestSuiteCaseList(suite));
     panel.appendChild(renderSuiteCaseEditor(state, suite));
     var actions = createEl('div', 'persona-lab-actions');
@@ -9198,6 +9735,13 @@
 	    appendSectionHeading(
 	      policyPanel,
 	      'h3',
+	      'App Integrations',
+	      'Grant registered App Bridge tools, including Ludflow document tools, directly from the provider catalogue.'
+	    );
+	    policyPanel.appendChild(buildAppBridgeCatalogSection(state));
+	    appendSectionHeading(
+	      policyPanel,
+	      'h3',
 	      'Tools',
 	      'Choose the specific actions this persona can use. Built-in tools and connected app tools are shown together by service.'
 	    );
@@ -9436,6 +9980,10 @@
 
   function renderState(state) {
     if (!state.container) return;
+    if (typeof state.personaTestBuilderUnmount === 'function') {
+      state.personaTestBuilderUnmount();
+      state.personaTestBuilderUnmount = null;
+    }
     hideFloatingTooltip();
     captureScrollPositions(state);
     var activeState = captureActiveElementState(state);
