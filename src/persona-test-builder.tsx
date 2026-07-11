@@ -17,6 +17,8 @@ import {
 } from "@xyflow/react";
 import reactFlowStyles from "@xyflow/react/dist/style.css";
 import builderStyles from "./persona-test-builder.css";
+import { createSerializedDraftFlusher } from "./draft-flush";
+import { removeGraphNodes, requirePreflightSuiteVersionId } from "./graph-editing";
 import { stickyNotePositionFromPointerDelta } from "./sticky-note-position";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -442,6 +444,31 @@ function PersonaTestBuilder(props: BuilderProps) {
     [props.apiBaseUrl, props.request],
   );
 
+  const draftFlusher = useMemo(() => createSerializedDraftFlusher<Definition, DraftRecord>({
+    getDefinition: () => definitionRef.current,
+    getRevision: () => draftRevisionRef.current,
+    persist: async ({ baseRevision, definition: submittedDefinition, force }) => {
+      const { payload } = await api(
+        `/admin/persona-studio/test-suites/${encodeURIComponent(props.suiteId)}/draft`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            organizationId: props.organizationId,
+            baseRevision,
+            definition: submittedDefinition,
+            ...(force ? { force: true } : {}),
+          }),
+        },
+      );
+      return payload as DraftRecord;
+    },
+    onRevision: (record) => {
+      setDraftRevision(record.revision);
+      draftRevisionRef.current = record.revision;
+      setDraftHash(record.definitionHash);
+    },
+  }), [api, props.organizationId, props.suiteId]);
+
   const report = useCallback(
     (message: string, kind: "success" | "error" | "info" = "info") => {
       setAnnouncement(message);
@@ -467,6 +494,7 @@ function PersonaTestBuilder(props: BuilderProps) {
       if (undoStack.current.length > 50) undoStack.current.shift();
       redoStack.current = [];
     }
+    definitionRef.current = next;
     setDefinition(next);
     const nextScenario = next.scenarios[Math.min(scenarioIndex, next.scenarios.length - 1)] || next.scenarios[0];
     setNodes(flowNodes(nextScenario, next));
@@ -531,29 +559,13 @@ function PersonaTestBuilder(props: BuilderProps) {
   }, [api, props.latestRun, props.organizationId, props.suiteId, report]);
 
   const persistDraft = useCallback(async (force = false) => {
-    if (!loaded || draftStatus === "saving" || draftStatus === "invalid" || (draftStatus === "conflict" && !force)) return null;
-    const baseRevision = draftRevisionRef.current;
-    if (baseRevision == null) return null;
+    if (!loaded || draftStatus === "invalid" || (draftStatus === "conflict" && !force)) return null;
     setDraftStatus("saving");
     try {
-      const { payload } = await api(
-        `/admin/persona-studio/test-suites/${encodeURIComponent(props.suiteId)}/draft`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            organizationId: props.organizationId,
-            baseRevision,
-            definition: definitionRef.current,
-            ...(force ? { force: true } : {}),
-          }),
-        },
-      );
-      setDraftRevision(payload.revision);
-      draftRevisionRef.current = payload.revision;
-      setDraftHash(payload.definitionHash);
+      const { record } = await draftFlusher.flush(force);
       setDraftConflictState(null);
       setDraftStatus("saved");
-      return payload as DraftRecord;
+      return record;
     } catch (error) {
       const requestError = error as Error & { status?: number; payload?: Record<string, any> };
       if (requestError.status === 409 && requestError.payload?.code === "DRAFT_REVISION_CONFLICT") {
@@ -571,7 +583,7 @@ function PersonaTestBuilder(props: BuilderProps) {
       report(requestError.message, "error");
       return null;
     }
-  }, [api, draftStatus, loaded, props.organizationId, props.suiteId, report]);
+  }, [draftFlusher, draftStatus, loaded, report]);
 
   useEffect(() => {
     if (!loaded || draftStatus !== "unsaved") return;
@@ -679,16 +691,18 @@ function PersonaTestBuilder(props: BuilderProps) {
     setSelectedNodeId(target.graph.nodes[index].id);
   };
 
-  const deleteNode = (nodeId: string) => {
+  const deleteNodes = (nodeIds: string[]) => {
     const next = clone(definition);
     const target = next.scenarios[scenarioIndex];
-    const node = target.graph.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node || node.type === "start" || node.type === "end") return;
-    target.graph.nodes = target.graph.nodes.filter((candidate) => candidate.id !== nodeId);
-    target.graph.edges = target.graph.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
+    const result = removeGraphNodes(target.graph.nodes, target.graph.edges, nodeIds);
+    if (!result.removedIds.length) return;
+    target.graph.nodes = result.nodes;
+    target.graph.edges = result.edges;
     installDefinition(next);
-    report(`Deleted ${node.name}.`);
+    report(`Deleted ${result.removedIds.length} node(s).`);
   };
+
+  const deleteNode = (nodeId: string) => deleteNodes([nodeId]);
 
   const updateStudioNote = (noteId: string, patch: Record<string, unknown>) => {
     const next = clone(definition);
@@ -887,7 +901,7 @@ function PersonaTestBuilder(props: BuilderProps) {
         addStudioNote();
       } else if (!editing && (event.key === "Delete" || event.key === "Backspace")) {
         const selected = nodes.filter((node) => node.selected).map((node) => node.id);
-        selected.forEach(deleteNode);
+        deleteNodes(selected);
       } else if (event.key === "Escape") {
         setCommandOpen(false);
         setPickerOpen(false);
@@ -931,7 +945,7 @@ function PersonaTestBuilder(props: BuilderProps) {
     try {
       if (draftStatus === "conflict") throw new Error("Resolve the draft conflict before saving a version.");
       if (draftStatus === "invalid") throw new Error("Resolve draft validation problems before saving a version.");
-      if (draftStatus === "unsaved") {
+      if (draftStatus !== "saved" || draftFlusher.hasInFlight()) {
         const persisted = await persistDraft();
         if (!persisted) throw new Error("Draft could not be saved.");
       }
@@ -1020,7 +1034,13 @@ function PersonaTestBuilder(props: BuilderProps) {
 
   const preflightLaunch = async () => {
     const saved = versionId ? null : await save();
-    const selectedVersionId = versionId || saved?.id;
+    let selectedVersionId: string;
+    try {
+      selectedVersionId = requirePreflightSuiteVersionId(versionId, saved);
+    } catch (error) {
+      report(error instanceof Error ? error.message : "Exact suite version is unavailable.", "error");
+      return;
+    }
     setBusy("preflight");
     try {
       const { payload } = await api(

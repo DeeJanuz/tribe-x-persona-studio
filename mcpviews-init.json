@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "startup_rules": {
+    "decidr:decidr_governance_lifecycle_solo_runtime": {
+      "plugin": "decidr",
+      "rule_id": "decidr_governance_lifecycle_solo_runtime",
+      "rule_version": "5",
+      "rule_hash": "sha256:66b8ca1fb518ece7cbc8cdf147bb15a5557e37a0d9d2e247fdcdf8c15c2b2ca5",
+      "locations": [
+        {
+          "agent_type": "codex",
+          "path": "AGENTS.md",
+          "label": "AGENTS.md"
+        }
+      ],
+      "do_not_install": false,
+      "do_not_update": false,
+      "updated_at": "2026-07-11T16:35:22.100428+00:00"
+    },
+    "decidr:decidr_work_logging_runtime": {
+      "plugin": "decidr",
+      "rule_id": "decidr_work_logging_runtime",
+      "rule_version": "7",
+      "rule_hash": "sha256:2971f3b8d5e8193183a728a5435c67ed866253555967b5156ce1a8ba8e1bd21b",
+      "locations": [
+        {
+          "agent_type": "codex",
+          "path": "AGENTS.md",
+          "label": "AGENTS.md"
+        }
+      ],
+      "do_not_install": false,
+      "do_not_update": false,
+      "updated_at": "2026-07-11T16:35:22.112188+00:00"
+    },
+    "mcpviews-core:init_session_project_path": {
+      "plugin": "mcpviews-core",
+      "rule_id": "init_session_project_path",
+      "rule_version": "1",
+      "rule_hash": "sha256:ca4d69a896ecf8edc08b989a0ba9f8cbb51a3666e8b8d1b2f818bc0ee6cb3a48",
+      "locations": [
+        {
+          "agent_type": "codex",
+          "path": "AGENTS.md",
+          "label": "AGENTS.md"
+        }
+      ],
+      "do_not_install": false,
+      "do_not_update": false,
+      "updated_at": "2026-07-11T16:35:22.063308+00:00"
+    },
+    "mcpviews-core:push_plans_to_mcpviews": {
+      "plugin": "mcpviews-core",
+      "rule_id": "push_plans_to_mcpviews",
+      "rule_version": "1",
+      "rule_hash": "sha256:b2e3674593731f546d2544dffe7490d9e9edddb1f05fd93e4fb9c0f5299959ae",
+      "locations": [
+        {
+          "agent_type": "codex",
+          "path": "AGENTS.md",
+          "label": "AGENTS.md"
+        }
+      ],
+      "do_not_install": false,
+      "do_not_update": false,
+      "updated_at": "2026-07-11T16:35:22.075989+00:00"
+    },
+    "mcpviews-gronk-speak:GronkSpeak": {
+      "plugin": "mcpviews-gronk-speak",
+      "rule_id": "GronkSpeak",
+      "rule_version": "4",
+      "rule_hash": "sha256:33a6b2f8bdc933d171e983a14d8e392dfc740c7b0111f7f54362376add13455a",
+      "locations": [
+        {
+          "agent_type": "codex",
+          "path": "AGENTS.md",
+          "label": "AGENTS.md"
+        }
+      ],
+      "do_not_install": false,
+      "do_not_update": false,
+      "updated_at": "2026-07-11T16:35:22.088442+00:00"
+    }
+  },
+  "context_defaults": [],
+  "project_context_hints": []
+}
